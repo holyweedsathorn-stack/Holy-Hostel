@@ -3,6 +3,6 @@
  * The anon / publishable key is meant to be public: the database only lets approved devices in.
  * NEVER put the service_role / secret key in this file. */
 window.HOLY_CONFIG = {
-  supabaseUrl: "https://YOUR-PROJECT-REF.supabase.co",
-  supabaseAnonKey: "YOUR-ANON-OR-PUBLISHABLE-KEY",
+  supabaseUrl: "https://bowblfjhimqgbfmuugab.supabase.co/rest/v1/",
+  supabaseAnonKey: "sb_publishable_zoR9p5bhGt9ni0PHAAlXhg_8zqEd8Gw",
 };
