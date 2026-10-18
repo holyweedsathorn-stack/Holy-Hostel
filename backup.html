@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Holy PMS backup</title>
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<style>
+  :root{--bg:#F2F5F4;--surface:#fff;--ink:#14201C;--muted:#5C6A65;--line:#DAE1DE;--accent:#0E6A59;--accent-ink:#fff;--bad:#B3261E;--bad-soft:#F9DEDC}
+  @media (prefers-color-scheme:dark){:root{--bg:#0E1412;--surface:#161F1C;--ink:#E3EBE8;--muted:#93A39D;--line:#2B3632;--accent:#43B497;--accent-ink:#04211A}}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;display:grid;place-items:center;min-height:100vh;padding:16px;box-sizing:border-box}
+  .card{width:min(460px,100%);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:12px}
+  h1{margin:0;font-size:1.3rem} p{margin:0;color:var(--muted);line-height:1.45}
+  button{font:inherit;font-weight:600;padding:12px;border-radius:8px;border:0;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+  button:disabled{opacity:.6} a{color:var(--accent)}
+  .err{color:var(--bad);background:var(--bad-soft);border-radius:8px;padding:8px 10px}
+</style>
+<script src="/config.js"></script>
+<script src="/vendor/supabase-2.99.3.js"></script>
+<script src="/js/backend.js"></script>
+</head>
+<body>
+<div class="card">
+  <h1>Back up all PMS data</h1>
+  <p>Downloads every booking, payment, room, setting, expense and image as one JSON file. Keep it somewhere private — it contains guest details. Owner devices only.</p>
+  <div id="msg"></div>
+  <button id="go" disabled>Preparing…</button>
+  <p><a href="/">← Back to the PMS</a></p>
+</div>
+<script>
+(async () => {
+  const go = document.getElementById("go"), msg = document.getElementById("msg");
+  await window.claude.use("db");
+  const dev = window.__device;
+  if (!dev || dev.role !== "admin") { msg.innerHTML = '<div class="err">Only an owner device (set up with the owner code) can download a full backup.</div>'; go.textContent = "Not allowed"; return; }
+  go.disabled = false; go.textContent = "Download backup";
+  go.onclick = async () => {
+    go.disabled = true; go.textContent = "Collecting…";
+    try {
+      const rows = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await window.__sb.from("docs").select("collection,id,data,updated_at").order("collection").order("id").range(from, from + 999);
+        if (error) throw error;
+        rows.push(...data); if (data.length < 1000) break;
+      }
+      const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
+      const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), count: rows.length, docs: rows }, null, 1)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `holy-pms-backup-${day}.json`; a.click();
+      msg.innerHTML = `<p>Saved ${rows.length} records.</p>`;
+    } catch (e) { msg.innerHTML = `<div class="err">${String(e.message || e)}</div>`; }
+    go.disabled = false; go.textContent = "Download backup";
+  };
+})();
+</script>
+</body>
+</html>
