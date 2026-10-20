@@ -137,3 +137,56 @@ do $$ begin
     alter publication supabase_realtime add table public.docs;
   end if;
 end $$;
+
+-- ───────────────────────────────────────────────────────────────
+-- 6. Work OS link — check guests in/out from the Holyweed Work OS app.
+--    Only the PMS server (api/workos/*, using the service_role key kept in Vercel)
+--    can call this. Tablets and the public key cannot.
+--    The date, balance and closed-month checks happen in api/workos/booking-status.js;
+--    this function does the change in one locked step, so no history is lost
+--    if a tablet saves the same booking at the same moment.
+-- ───────────────────────────────────────────────────────────────
+create or replace function public.workos_set_booking_status(p_id text, p_action text, p_staff text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  d      jsonb;
+  want   text;
+  need   text;
+  stamp  text;
+  label  text;
+  now_iso text := to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+  staff  text := nullif(left(trim(coalesce(p_staff, '')), 80), '');
+  hist   jsonb;
+begin
+  if p_action = 'check_in' then
+    want := 'checked_in';  need := 'confirmed';  stamp := 'checkedInAt';  label := 'Checked in';
+  elsif p_action = 'check_out' then
+    want := 'checked_out'; need := 'checked_in'; stamp := 'checkedOutAt'; label := 'Checked out';
+  else
+    raise exception 'Unknown action: %', p_action using errcode = '22023';
+  end if;
+
+  select data into d from public.docs where collection = 'bookings' and id = p_id for update;
+  if not found then return jsonb_build_object('result', 'not_found'); end if;
+  if d->>'status' = want then return jsonb_build_object('result', 'already', 'booking', d); end if;
+  if coalesce(d->>'status', 'confirmed') <> need then
+    return jsonb_build_object('result', 'wrong_status', 'booking', d);
+  end if;
+
+  -- same history entry shape as the PMS (at, by, action), keeping the last 60
+  hist := (case when jsonb_typeof(d->'history') = 'array' then d->'history' else '[]'::jsonb end)
+          || jsonb_build_array(jsonb_build_object('at', now_iso, 'by', null,
+               'action', label || ' via Work OS' || coalesce(' (' || staff || ')', '')));
+  if jsonb_array_length(hist) > 60 then
+    hist := (select jsonb_agg(e order by i) from jsonb_array_elements(hist) with ordinality t(e, i)
+             where i > jsonb_array_length(hist) - 60);
+  end if;
+
+  d := d || jsonb_build_object('status', want, stamp, now_iso, 'history', hist,
+                               'updatedAt', now_iso, 'updatedBy', null);
+  update public.docs set data = d, updated_at = now() where collection = 'bookings' and id = p_id;
+  return jsonb_build_object('result', 'ok', 'booking', d);
+end $$;
+
+revoke all on function public.workos_set_booking_status(text, text, text) from public, anon, authenticated;
+grant execute on function public.workos_set_booking_status(text, text, text) to service_role;
