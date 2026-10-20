@@ -62,6 +62,32 @@ Done. The device stays approved until you remove it. Clearing the browser's webs
 
 ---
 
+## Work OS link (check-in / check-out from Holyweed Work OS)
+
+Staff can check guests in and out from the Hostel section of the Work OS clock screen. Work OS reads today's arrivals and in-house guests from the PMS and marks the booking checked in / out here, so nobody types it twice. The tablets update live, and the booking's History says *"Checked in via Work OS (staff name)"*.
+
+Two private endpoints do this. Only a server that knows the shared secret can use them:
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/workos/front-desk?date=YYYY-MM-DD` | Today's arrivals (incl. late ones), in-house guests and who's due out. Guest name, room, dates, channel, balance. No phone, email, ID or photos. |
+| `POST /api/workos/booking-status` | `{ bookingId, action: "check_in" \| "check_out", staffName, allowBalance }`. Early arrivals, early departures and closed months are refused (do those here in the PMS). Check-out with money owing needs `allowBalance: true`. |
+
+Setup (once):
+1. Supabase → SQL Editor: paste all of `supabase/schema.sql` again → **Run** (it adds section 6, `workos_set_booking_status`).
+2. Make a long random secret, e.g. run `openssl rand -hex 32`, or use a password manager's generator (64 characters).
+3. Vercel → this project → **Settings → Environment Variables** (Production and Preview):
+   - `WORKOS_API_SECRET` = the secret from step 2
+   - `SUPABASE_URL` = the Project URL (same as `config.js`)
+   - `SUPABASE_SERVICE_ROLE_KEY` = Supabase → Project Settings → API → **service_role / secret** key
+
+   > This key can read and change everything. It goes **only** in Vercel's environment variables, never in `config.js` or any file in this repo.
+4. Redeploy. In the Work OS Vercel project set `PMS_API_URL` (this site's address) and `PMS_API_SECRET` (the same secret).
+
+To change the secret, update it in both Vercel projects and redeploy both.
+
+---
+
 ## Day-to-day admin
 
 | Task | How |
@@ -85,6 +111,7 @@ Done. The device stays approved until you remove it. Clearing the browser's webs
 | `config.js` | Your Supabase URL + anon/publishable key |
 | `supabase/schema.sql` | Tables, security rules, live-update setup |
 | `backup.html` | Owner-only full data export |
+| `api/workos/` | Private endpoints Work OS uses to check guests in/out (see *Work OS link*) |
 | `vendor/supabase-2.99.3.js` | Supabase client library (MIT licence), bundled so the app doesn't depend on a CDN |
 | `manifest.webmanifest`, `icons/` | Home-screen app icon and name |
 

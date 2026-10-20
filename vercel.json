@@ -1,5 +1,6 @@
 {
   "cleanUrls": true,
+  "regions": ["sin1"],
   "headers": [
     {
       "source": "/(.*)",
@@ -15,6 +16,7 @@
     { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
     { "source": "/backup", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
     { "source": "/config.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
-    { "source": "/js/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+    { "source": "/js/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/api/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-store" }] }
   ]
 }
