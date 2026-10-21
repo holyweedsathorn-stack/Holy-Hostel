@@ -71,7 +71,7 @@ Two private endpoints do this. Only a server that knows the shared secret can us
 | Endpoint | What it does |
 |---|---|
 | `GET /api/workos/front-desk?date=YYYY-MM-DD` | Today's arrivals (incl. late ones), in-house guests and who's due out. Guest name, room, dates, channel, balance. No phone, email, ID or photos. |
-| `POST /api/workos/walk-in` | A guest checked in on Work OS by hand. If the PMS already has exactly one booking for them (same OTA booking number, or same name arriving now), that booking is checked in. Otherwise a new booking is created in Work OS's room/bed, already checked in: today → expected check-out (1 night if none), price = amount paid ÷ nights (or the room's normal price), cash / bank transfer recorded as collected (bank transfer as PromptPay). Refused if that room or bed is already booked. Sending it twice never makes two bookings. |
+| `POST /api/workos/walk-in` | A guest checked in on Work OS by hand. If the PMS already has exactly one booking for them (same OTA booking number, or same name arriving now), that booking is checked in. Otherwise a new booking is created in Work OS's room/bed, already checked in: today → expected check-out (1 night if none), price = amount paid ÷ nights (or the room's normal price), cash / bank transfer added as a payment **to collect** (bank transfer as PromptPay): it counts as income once staff press *Collect* in the PMS. Refused if that room or bed is already booked. Sending it twice never makes two bookings. |
 | `POST /api/workos/booking-status` | `{ bookingId, action: "check_in" \| "check_out", staffName, allowBalance }`. Early arrivals, early departures and closed months are refused (do those here in the PMS). Check-out with money owing needs `allowBalance: true`. |
 
 Setup (once):

@@ -8,7 +8,8 @@
  *   name arriving now), that booking is checked in instead of making a second one.
  * - Otherwise a new booking is created in the same shape the PMS saves its own bookings
  *   (saveBooking in index.html), already checked in, so it shows on the calendar and in reports.
- *   Money staff typed in Work OS is recorded as collected (cash, or PromptPay for a bank transfer).
+ *   Money staff typed in Work OS goes on as a "to collect" payment (cash, or PromptPay for a bank
+ *   transfer); it counts as income once staff press Collect in the PMS, like any other booking.
  * - The Work OS stay id is stored on the booking, so sending the same walk-in again never creates two. */
 "use strict";
 const crypto = require("crypto");
@@ -98,18 +99,19 @@ module.exports = async (req, res) => {
     const closed = closedMonthsHit(draft, unitsById, settings);
     if (closed.length) return send(res, 409, { ok: false, code: "month_closed", message: "These dates are in a closed month (" + closed.join(", ") + "). The owner has to add this booking in the PMS." });
 
-    // Paid at the desk: recorded as collected, the same as pressing Collect in the PMS.
+    // Money taken at the desk: a "to collect" payment, exactly like the payment field on the PMS's own
+    // New booking (saveBooking in index.html). It isn't income until staff press Collect in the PMS.
+    // The PMS has no bank-transfer method; its own payKey() files "transfer" under PromptPay.
     const mk = body.paymentMethod === "cash" ? "cash" : body.paymentMethod === "bank_transfer" ? "promptpay" : null;
     const payments = mk && amount > 0 ? [{
       id: crypto.randomBytes(4).toString("hex"), mk, method: mk === "cash" ? "Cash" : "PromptPay", amount,
-      note: mk === "cash" ? "Paid at check-in (Work OS)" : "Bank transfer, recorded at check-in (Work OS)",
-      status: "collected", voided: false, date: checkIn, expDate: checkIn, expAmount: amount,
-      createdAt: now, by: null, collectedAt: now, collectedBy: null,
+      note: mk === "cash" ? "Taken at check-in (Work OS)" : "Bank transfer, recorded at check-in (Work OS)",
+      status: "pending", date: checkIn, createdAt: now, by: null,
     }] : [];
     const id = "wos" + stayId.replace(/-/g, "").toLowerCase();
     const who = staff ? ` (${staff})` : "";
     const history = [{ at: now, by: null, action: "Walk-in from Work OS, checked in" + who }]
-      .concat(payments.map(p => ({ at: now, by: null, action: `Collected ${baht(p.amount)} by ${p.method} on ${checkIn.slice(8, 10)}/${checkIn.slice(5, 7)}/${checkIn.slice(0, 4)} (Work OS)` })));
+      .concat(payments.map(p => ({ at: now, by: null, action: `Expected payment ${baht(p.amount)} by ${p.method} (not collected yet)` })));
     const booking = {
       guestName: str(body.guestName, 200) || "Walk-in guest", phone: "", email: "", nationality: "", idNumber: "",
       checkIn, checkOut, guests: 1, rate, channel: CHANNEL[body.bookingSource] || "walkin", otaRef, notes: str(body.notes, 1000),
