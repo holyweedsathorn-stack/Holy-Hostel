@@ -116,4 +116,31 @@ function shape(b, unitsById, settings, date) {
   };
 }
 
-module.exports = { authorize, send, sb, docs, doc, todayBkk, validDate, LIVE, balanceOf, bookingProp, closedMonthsHit, shape };
+// a unit's price for this many guests (unitRate in index.html)
+function unitRate(u, guests) {
+  if (!u) return 0;
+  const base = +u.rate || 0, inc = Math.max(1, +u.baseOcc || (u.type === "dorm" ? 1 : 2));
+  return base + Math.max(0, (guests || 1) - inc) * (+u.extraPerson || 0);
+}
+const unitLabel = u => (u ? (u.group ? u.group + " · " + u.name : u.name) : "Unassigned");
+// Work OS names rooms by number ("202") and dorm beds by number ("201", bed "3").
+// Find the one active PMS unit whose name has that room number (and bed number for a dorm bed).
+function matchUnit(units, prop, roomNumber, bedNumber) {
+  const room = String(roomNumber || "").trim(), bed = String(bedNumber || "").trim();
+  if (!/^\d+$/.test(room)) return { error: "no_unit" };
+  const hasNum = (text, n) => new RegExp("(^|\\D)" + n + "(\\D|$)").test(text || "");
+  let hits = units.filter(u => u.active !== false && unitProp(u) === prop && hasNum((u.group || "") + " " + (u.name || ""), room));
+  if (bed) {
+    // the bed number is in the unit's own name ("Bed 3", "B3", "3"), not in its room/dorm name
+    const beds = hits.filter(u => new RegExp("(^|\\D)" + bed + "(\\D|$)").test(String(u.name || "").replace(new RegExp(room, "g"), "")));
+    if (beds.length) hits = beds;
+    else if (hits.length > 1) return { error: "no_unit" };
+  }
+  if (hits.length === 1) return { unit: hits[0] };
+  return { error: hits.length ? "ambiguous_unit" : "no_unit" };
+}
+
+module.exports = {
+  authorize, send, sb, docs, doc, todayBkk, validDate, addDays, nightsBetween, LIVE, balanceOf, bookingProp,
+  closedMonthsHit, shape, unitRate, unitLabel, unitProp, matchUnit,
+};

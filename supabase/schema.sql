@@ -190,3 +190,42 @@ end $$;
 
 revoke all on function public.workos_set_booking_status(text, text, text) from public, anon, authenticated;
 grant execute on function public.workos_set_booking_status(text, text, text) to service_role;
+
+-- A walk-in checked in on Work OS: create the booking (already checked in) unless that room or bed
+-- is taken for those nights. p_doc is the whole booking, built by api/workos/walk-in.js in the same
+-- shape the PMS itself saves. Sending the same walk-in again returns the existing booking, never a second one.
+create or replace function public.workos_create_walk_in(p_id text, p_doc jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  existing jsonb;
+  clash    record;
+begin
+  if coalesce(p_doc->>'unitId', '') = '' or (p_doc->>'checkIn') is null or (p_doc->>'checkOut') is null
+     or p_doc->>'checkOut' <= p_doc->>'checkIn' then
+    raise exception 'Walk-in needs a unit and valid dates' using errcode = '22023';
+  end if;
+  -- one walk-in at a time per unit, so two can't both pass the free-room check
+  perform pg_advisory_xact_lock(hashtext('workos-unit:' || (p_doc->>'unitId')));
+
+  select data into existing from public.docs where collection = 'bookings' and id = p_id;
+  if found then return jsonb_build_object('result', 'already', 'booking', existing); end if;
+
+  select id, data into clash from public.docs
+  where collection = 'bookings'
+    and data->>'unitId' = p_doc->>'unitId'
+    -- same rule as conflictsFor() in index.html: every booking that isn't cancelled / no-show holds its dates
+    and coalesce(data->>'status', '') not in ('cancelled', 'no_show', 'void')
+    and data->>'checkIn' < p_doc->>'checkOut'
+    and data->>'checkOut' > p_doc->>'checkIn'
+  order by data->>'checkIn'
+  limit 1;
+  if found then
+    return jsonb_build_object('result', 'room_taken', 'clashId', clash.id, 'clash', clash.data);
+  end if;
+
+  insert into public.docs (collection, id, data, updated_at) values ('bookings', p_id, p_doc, now());
+  return jsonb_build_object('result', 'ok', 'booking', p_doc);
+end $$;
+
+revoke all on function public.workos_create_walk_in(text, jsonb) from public, anon, authenticated;
+grant execute on function public.workos_create_walk_in(text, jsonb) to service_role;
