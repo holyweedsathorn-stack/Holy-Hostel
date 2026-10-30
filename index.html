@@ -900,6 +900,7 @@ function calStats(from,D){
 /* ---------- BOOKINGS ---------- */
 function bkCollect(b){ return [...pendingOf(b).map(p=>`<span class="nowrap"><span class="pm-dot pm-${payKey(p)}"></span><span class="num">${money(p.amount)}</span> ${S.canWrite?`<button class="btn small primary" data-act="collect" data-id="${b.id}" data-pid="${p.id}">Collect</button>`:""}</span>`),
       ...(b.payments||[]).filter(p=>isIncome(p)&&!isCancel(b.status)).map(p=>`<span class="nowrap col-done" title="${esc(payLabel(payKey(p)))} · received ${esc(dmy(p.date))}"><span class="col-tick">✓</span><span class="num">${money(p.amount)}</span> <small class="muted">${esc(dmy(p.date).slice(0,5))}</small> ${S.canWrite?`<button class="btn small" data-act="uncollect" data-id="${b.id}" data-pid="${p.id}">Uncollect</button>`:""}</span>`)].join(" ")||'<span class="muted">—</span>'; }
+function bkDup(b){ return S.canWrite?`<button class="btn small" data-act="dup" data-id="${b.id}" title="New booking for the same guest">Duplicate</button>`:""; }
 function bkPP(b){ return b.thumb?`<button class="pp-btn" data-act="pp-view" data-id="${esc(b.id)}" title="View passport / ID"><img src="${b.thumb}" alt="Passport of ${esc(b.guestName)}">${+b.imgCount>1?`<span>+${+b.imgCount-1}</span>`:""}</button>`:`<span class="pp-none" aria-hidden="true">ID</span>`; }
 function bkCard(b){ const f=folio(b);
   return `<article class="bk-card${isCancel(b.status)?" is-void":""}" data-act="open" data-id="${b.id}" tabindex="0" role="button" aria-label="Open booking ${esc(b.guestName)}">
@@ -909,7 +910,7 @@ function bkCard(b){ const f=folio(b);
       <div class="bk-sub">${esc(unitLabel(unitById(b.unitId)))}</div>
       <div class="bk-sub">${esc(fdw(b.checkIn))} → ${esc(fdw(b.checkOut))} · ${f.n}n · <span class="chan">${esc(chanLabel(b.channel))}</span> <span class="mono">${esc(b.ref||b.id.slice(-6).toUpperCase())}</span></div>
       <div class="bk-money"><span>Total <b class="num">${money(f.total)}</b></span><span class="${f.balance>0?"due":"muted"}">Balance <b class="num">${money(f.balance)}</b></span></div>
-      ${pendingOf(b).length||(!isCancel(b.status)&&(b.payments||[]).some(p=>isIncome(p)))?`<div class="bk-coll">${bkCollect(b)}</div>`:""}
+      ${pendingOf(b).length||(!isCancel(b.status)&&(b.payments||[]).some(p=>isIncome(p)))||S.canWrite?`<div class="bk-coll">${bkCollect(b)} ${bkDup(b)}</div>`:""}
     </div></article>`; }
 function vBookings(){
   if(!S.ready) return `<div class="empty">Loading…</div>`;
@@ -921,23 +922,24 @@ function vBookings(){
   else if(fs==="unpaid") rows=rows.filter(b=>folio(b).balance>0);
   else if(fs==="pending") rows=rows.filter(b=>pendingOf(b).length);
   else if(fs==="cancelled") rows=rows.filter(b=>isCancel(b.status));
+  else if(fs==="this_month"){ const m0=T.slice(0,7)+"-01", m1=ymAdd(T.slice(0,7),1)+"-01"; rows=rows.filter(b=>b.checkIn<m1&&b.checkOut>m0); }
   else if(fs!=="all") rows=rows.filter(b=>b.status===fs);
   if(q) rows=rows.filter(b=>[b.guestName,b.phone,b.email,b.otaRef,b.ref,b.nationality,b.idNumber,unitLabel(unitById(b.unitId))].some(v=>String(v||"").toLowerCase().includes(q)));
-  rows.sort((a,b)=>fs==="upcoming"?a.checkIn.localeCompare(b.checkIn):b.checkIn.localeCompare(a.checkIn));
+  rows.sort((a,b)=>fs==="upcoming"||fs==="this_month"?a.checkIn.localeCompare(b.checkIn):b.checkIn.localeCompare(a.checkIn));
   const shown=rows.slice(0,300);
   return `
   <div class="bar-row">
     <h2 class="grow">Bookings</h2>
     ${S.canWrite?`<button class="btn" data-act="hg-import">Import (Hoteliers Guru / Airbnb)</button>`:""}
     <input type="search" id="q" placeholder="Guest, phone, ref, OTA no., room…" value="${esc(S.q)}" style="max-width:300px" aria-label="Search bookings">
-    <select id="fstatus" style="width:auto" aria-label="Filter">${[["upcoming","Upcoming & in house"],["pending","Awaiting collection"],["unpaid","Balance due"],["confirmed","Confirmed"],["checked_in","In house"],["checked_out","Checked out"],["cancelled","Cancelled"],["no_show","No-show"],["all","All (last 13 months)"]].map(([v,l])=>`<option value="${v}" ${v===fs?"selected":""}>${l}</option>`).join("")}</select>
+    <select id="fstatus" style="width:auto" aria-label="Filter">${[["upcoming","Upcoming & in house"],["this_month","This month"],["pending","Awaiting collection"],["unpaid","Balance due"],["confirmed","Confirmed"],["checked_in","In house"],["checked_out","Checked out"],["cancelled","Cancelled"],["no_show","No-show"],["all","All (last 13 months)"]].map(([v,l])=>`<option value="${v}" ${v===fs?"selected":""}>${l}</option>`).join("")}</select>
   </div>
   <section class="panel"><div class="tbl-wrap bk-table"><table>
     <thead><tr><th>Ref</th><th>Passport</th><th>Guest</th><th>Unit</th><th>Arrive</th><th>Depart</th><th class="r">Nights</th><th>Channel</th><th>Status</th><th class="r">Total</th><th class="r">Balance</th><th>To collect</th></tr></thead>
     <tbody>${shown.map(b=>{const f=folio(b);return `<tr class="click${isCancel(b.status)?" void-row":""}" data-act="open" data-id="${b.id}" tabindex="0">
       <td class="mono">${esc(b.ref||b.id.slice(-6).toUpperCase())}</td><td class="pp-cell">${b.thumb?`<button class="pp-btn" data-act="pp-view" data-id="${esc(b.id)}" title="View passport / ID"><img src="${b.thumb}" alt="Passport of ${esc(b.guestName)}">${+b.imgCount>1?`<span>+${+b.imgCount-1}</span>`:""}</button>`:`<span class="muted">—</span>`}</td><td><b>${esc(b.guestName)}</b>${b.groupId?` <span class="chan">group</span>`:""}</td><td>${esc(unitLabel(unitById(b.unitId)))}</td>
       <td>${esc(fdw(b.checkIn))}</td><td>${esc(fdw(b.checkOut))}</td><td class="r num">${f.n}</td><td>${esc(chanLabel(b.channel))}</td>
-      <td><span class="pill st-${b.status}">${STATUS[b.status]||b.status}</span></td><td class="r num">${money(f.total)}</td><td class="r num ${f.balance>0?"due":""}">${money(f.balance)}</td><td>${bkCollect(b)}</td></tr>`;}).join("")}</tbody>
+      <td><span class="pill st-${b.status}">${STATUS[b.status]||b.status}</span></td><td class="r num">${money(f.total)}</td><td class="r num ${f.balance>0?"due":""}">${money(f.balance)}</td><td>${bkCollect(b)} ${bkDup(b)}</td></tr>`;}).join("")}</tbody>
   </table></div><div class="bk-cards">${shown.map(bkCard).join("")}</div>${shown.length?"":`<div class="empty">No bookings match. ${S.canWrite?"Use <b>+ New booking</b> to add one.":""}</div>`}
   ${rows.length>300?`<div class="empty">Showing the first 300 of ${rows.length}. Narrow the search to see more.</div>`:""}</section>`;
 }
@@ -1214,6 +1216,17 @@ function newBooking(pre){
   const ci=pre&&pre.date||T;
   S.open={id:null,draft:{guestName:"",phone:"",email:"",nationality:"",idNumber:"",guests:1,unitId:u?u.id:"",checkIn:ci,checkOut:addDays(ci,1),rate:unitRate(u,1),channel:"walkin",otaRef:"",notes:"",beds:1}};
   renderDialog(); $("#dlg").showModal(); setTimeout(()=>$("#f-guestName")?.focus(),30);
+}
+// New booking prefilled from an existing one: same guest, room, channel and rate. Dates, OTA number,
+// notes, payments and charges are left out so nothing is double-booked or double-counted by accident.
+async function duplicateBooking(id){
+  const b=S.bookings.find(x=>x.id===id); if(!b) return;
+  const ok=await ask(`<h3 style="margin-bottom:8px">Duplicate booking for ${esc(b.guestName)}?</h3>
+    <p class="muted">A new booking opens with the same guest, room, channel and rate. Pick the new dates, then press Save. Nothing is created until you save. Payments, charges and the OTA number are not copied.</p>`,"Duplicate");
+  if(!ok) return;
+  S.open={id:null,draft:{guestName:b.guestName||"",phone:b.phone||"",email:b.email||"",nationality:b.nationality||"",idNumber:b.idNumber||"",
+    guests:+b.guests||1,unitId:b.unitId||"",checkIn:"",checkOut:"",rate:b.rate??"",channel:b.channel||"walkin",otaRef:"",notes:"",beds:1}};
+  renderDialog(); $("#dlg").showModal(); setTimeout(()=>$("#f-checkIn-txt")?.focus(),30);
 }
 function unitOptions(sel){
   return TYPE_ORDER.map(t=>{ const us=sortedUnits(true).filter(u=>u.type===t&&(u.active!==false||u.id===sel)); if(!us.length) return "";
@@ -2774,6 +2787,7 @@ document.addEventListener("click",async e=>{
     case "disc-reason": { const i=el.closest(".disc-body")?$("#d-reason"):$("#f-discReason"); if(i){ i.value=el.dataset.r; i.dispatchEvent(new Event("input",{bubbles:true})); } break; }
     case "goto-pending": S.view="bookings"; S.fstatus="pending"; render(); break;
     case "collect": e.stopPropagation(); collectPayment(id,el.dataset.pid); break;
+    case "dup": e.stopPropagation(); duplicateBooking(id); break;
     case "invoice": { const b=S.bookings.find(x=>x.id===S.open?.id); if(b) save(`invoice-${b.ref||b.id.slice(-6)}.html`,invoiceHtml(b)); break; }
     case "cal-move": S.calStart=addDays(S.calStart,+el.dataset.n); render(); break;
     case "cal-today": S.calStart=addDays(S.today,-1); render(); break;
