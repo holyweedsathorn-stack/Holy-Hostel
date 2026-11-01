@@ -1221,12 +1221,15 @@ function newBooking(pre){
 // notes, payments and charges are left out so nothing is double-booked or double-counted by accident.
 async function duplicateBooking(id){
   const b=S.bookings.find(x=>x.id===id); if(!b) return;
+  // Mostly used when a guest extends and pays at the desk: the new booking carries on from this
+  // stay's check-out day (or today, if that's already past) for 1 night.
+  const ci=validDate(b.checkOut)&&b.checkOut>=S.today?b.checkOut:S.today, co=addDays(ci,1);
   const ok=await ask(`<h3 style="margin-bottom:8px">Duplicate booking for ${esc(b.guestName)}?</h3>
-    <p class="muted">A new booking opens with the same guest, room, channel and rate. Pick the new dates, then press Save. Nothing is created until you save. Payments, charges and the OTA number are not copied.</p>`,"Duplicate");
+    <p class="muted">A new booking opens with the same guest, room, channel and rate, from <b>${esc(fdw(ci))}</b> for 1 night. Change the check-out for more nights, add the payment, then press Save. Nothing is created until you save. Payments, charges and the OTA number are not copied.</p>`,"Duplicate");
   if(!ok) return;
   S.open={id:null,draft:{guestName:b.guestName||"",phone:b.phone||"",email:b.email||"",nationality:b.nationality||"",idNumber:b.idNumber||"",
-    guests:+b.guests||1,unitId:b.unitId||"",checkIn:"",checkOut:"",rate:b.rate??"",channel:b.channel||"walkin",otaRef:"",notes:"",beds:1}};
-  renderDialog(); $("#dlg").showModal(); setTimeout(()=>$("#f-checkIn-txt")?.focus(),30);
+    guests:+b.guests||1,unitId:b.unitId||"",checkIn:ci,checkOut:co,rate:b.rate??"",channel:b.channel||"walkin",otaRef:"",notes:"",beds:1}};
+  renderDialog(); $("#dlg").showModal(); setTimeout(()=>$("#f-checkOut-txt")?.focus(),30);
 }
 function unitOptions(sel){
   return TYPE_ORDER.map(t=>{ const us=sortedUnits(true).filter(u=>u.type===t&&(u.active!==false||u.id===sel)); if(!us.length) return "";
