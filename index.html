@@ -159,6 +159,14 @@ tfoot td{font-weight:600;border-top:1px solid var(--line)}
 .tb.st-checked_in{background:var(--ok-soft);color:var(--ink);border-color:var(--ok)}
 .tb.st-checked_out{background:var(--line-2);color:var(--muted);border-color:var(--muted)}
 .tb.clipL{border-top-left-radius:0;border-bottom-left-radius:0}
+.tb.hi{outline:3px solid var(--warn);outline-offset:1px;z-index:3}
+.cal-find{position:relative;display:flex;gap:6px;flex:1 1 260px;max-width:360px}
+.cal-find input{flex:1;min-width:0}
+.cal-res{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:20;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:320px;overflow:auto}
+.cal-res button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line-2);background:none;color:var(--ink);padding:8px 12px;cursor:pointer;font:inherit}
+.cal-res button:hover,.cal-res button:focus{background:var(--surface-2)}
+.cal-res small{display:block;color:var(--muted)}
+.cal-chk li{margin:4px 0}
 .tb .dot{width:7px;height:7px;border-radius:50%;background:var(--bad);flex:0 0 auto}
 .tb span{overflow:hidden;text-overflow:ellipsis}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--muted);align-items:center}
@@ -542,7 +550,7 @@ const S = {
   db:null, user:null, dl:null, uid:null, canWrite:true, isAdmin:false, ready:false, noDb:false,
   units:[], bookings:[], settings:structuredClone(DEF_SETTINGS),
   prop:(()=>{try{return localStorage.getItem("hh-prop")||"sathorn";}catch(e){return "sathorn";}})(),
-  view:"today", today:todayBkk(), calStart:null, calDays:14,
+  view:"today", today:todayBkk(), calStart:null, calDays:14, calQ:"", calHi:null, calChk:null,
   q:"", fstatus:"upcoming", rep:null, repData:null, repLoading:false,
   open:null, names:{}, accOpen:new Set(), dayOpen:new Set(), payouts:{}, expenses:{}, expMonth:null, repTab:"report", actQ:"", actType:"",
   repScope:(()=>{try{return localStorage.getItem("hh-repscope")||"prop";}catch(e){return "prop";}})(),
@@ -675,12 +683,13 @@ function render(){
   $("#btn-new").disabled=!S.canWrite||S.noDb;
   const m=$("#main");
   if(S.noDb){ m.innerHTML=`<div class="notice"><h3>Sign in to use the PMS</h3><p class="muted">This page keeps bookings in a shared database. Open it in claude.ai while signed in to the Holy Group account, or ask the owner to share it with you.</p></div>`; return; }
-  const keep=m.querySelector("#q")?{pos:m.querySelector("#q").selectionStart}:null;
+  const kq=["q","cal-q"].map(i=>m.querySelector("#"+i)).find(x=>x&&x===document.activeElement)||m.querySelector("#q");
+  const keep=kq?{id:kq.id,pos:kq.selectionStart}:null;
   const ae=document.activeElement;
   if((S.view==="setup"||S.view==="channels")&&!S._force&&ae&&m.contains(ae)&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)&&ae.type!=="checkbox"&&ae.type!=="radio"&&m.dataset.view===S.view){ S._pending=true; return; }
   S._force=false; S._pending=false; m.dataset.view=S.view;
   m.innerHTML = ({today:vToday,calendar:vCalendar,bookings:vBookings,reports:vReports,setup:vSetup,channels:vChannels,expenses:vExpenses}[S.view]||vToday)();
-  if(keep&&m.querySelector("#q")){ const q=m.querySelector("#q"); q.focus(); try{q.setSelectionRange(keep.pos,keep.pos);}catch(e){} }
+  if(keep&&m.querySelector("#"+keep.id)){ const q=m.querySelector("#"+keep.id); q.focus(); try{q.setSelectionRange(keep.pos,keep.pos);}catch(e){} }
   if(S.view==="reports"&&!S.repData&&!S.repLoading) loadReport();
 }
 
@@ -699,7 +708,7 @@ function periodTitle(mode,r){
 function periodSwitch(){
   const m=S.tMode||"day", a=S.tAnchor||S.today, cur=periodRange(m,S.today).from===periodRange(m,a).from;
   return `<div class="seg" role="radiogroup" aria-label="Period">${[["day","Today"],["week","This week"],["month","This month"]].map(([k,l])=>`<label><input type="radio" name="t-mode" value="${k}" ${m===k?"checked":""}><span>${l}</span></label>`).join("")}</div>
-    <span class="nowrap" style="position:relative"><button class="btn small" data-act="t-move" data-k="-1" aria-label="Previous">←</button><button class="btn small" data-act="t-move" data-k="1" aria-label="Next">→</button><button class="btn small" data-act="t-cal" aria-label="Pick a ${m==="month"?"month":"date"}" title="Pick a ${m==="month"?"month":"date"}" aria-expanded="${S.tPick?"true":"false"}">${CAL_SVG}</button><input type="date" id="t-date" value="${esc(a)}" tabindex="-1" aria-hidden="true" style="position:absolute;right:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0">${S.tPick?monthPicker(a):""}${cur?"":`<button class="btn small ghost" data-act="t-now">Back to ${m==="day"?"today":m==="week"?"this week":"this month"}</button>`}</span>`;
+    <span class="nowrap" style="position:relative"><button class="btn small" data-act="t-move" data-k="-1" aria-label="Previous">←</button><button class="btn small" data-act="t-move" data-k="1" aria-label="Next">→</button><button class="btn small" data-act="t-cal" aria-label="Pick a ${m==="month"?"month":"date"}" title="Pick a ${m==="month"?"month":"date"}" aria-expanded="${S.tPick?"true":"false"}">${CAL_SVG}</button><input type="date" id="t-date" value="${esc(a)}" tabindex="-1" aria-hidden="true" style="position:absolute;right:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0">${S.tPick?monthPicker(a):""}${cur?"":`<button class="btn small ghost" data-act="t-now">Back to ${m==="day"?"today":m==="week"?"this week":"this month"}</button>`}<button class="btn small" data-act="t-jpg" data-noimg>Download JPG</button></span>`;
 }
 function monthPicker(a){
   const y=S.tPickYear||+a.slice(0,4), sel=a.slice(0,7), now=S.today.slice(0,7);
@@ -854,7 +863,7 @@ function vCalendar(){
       const bars=bs.map(b=>{
         const s=Math.max(0,nightsBetween(start,b.checkIn)), e=Math.min(D,nightsBetween(start,b.checkOut)); const l=e-s; if(l<=0) return "";
         const f=folio(b);
-        return `<button class="tb st-${b.status}${b.checkIn<start?" clipL":""}" style="--s:${s};--l:${l}" data-act="open" data-id="${b.id}" title="${esc(b.guestName)} · ${esc(fd(b.checkIn))}–${esc(fd(b.checkOut))} · ${esc(chanLabel(b.channel))}${f.balance>0?" · "+money(f.balance)+" due":""}">${f.balance>0?'<i class="dot" aria-label="balance due"></i>':""}<span>${esc(b.guestName||"Guest")}</span></button>`;
+        return `<button class="tb st-${b.status}${b.checkIn<start?" clipL":""}${b.id===S.calHi?" hi":""}" data-bid="${b.id}" style="--s:${s};--l:${l}" data-act="open" data-id="${b.id}" title="${esc(b.guestName)} · ${esc(fd(b.checkIn))}–${esc(fd(b.checkOut))} · ${esc(chanLabel(b.channel))}${f.balance>0?" · "+money(f.balance)+" due":""}">${f.balance>0?'<i class="dot" aria-label="balance due"></i>':""}<span>${esc(b.guestName||"Guest")}</span></button>`;
       }).join("");
       body+=`<div class="t-row"><div class="t-lab"><b>${esc(u.name)}</b><small>${esc(priceLine(u))}</small></div><div class="t-track">${cells}${bars}</div></div>`;
     }
@@ -868,9 +877,98 @@ function vCalendar(){
     ${dateField("cal-jump",start,'aria-label="Jump to date"')}
     <select id="cal-days" aria-label="Days shown" style="width:auto">${[7,14,30].map(n=>`<option value="${n}" ${n===D?"selected":""}>${n} days</option>`).join("")}</select>
   </div>
+  <div class="bar-row" data-noimg>
+    <div class="cal-find"><input type="search" id="cal-q" placeholder="Find guest, ref, OTA no., phone…" value="${esc(S.calQ)}" aria-label="Find a booking on the calendar" autocomplete="off"><button class="btn" data-act="cal-find">Search</button>${calResults()}</div>
+    <button class="btn" data-act="cal-check" title="Compare the calendar with the Bookings list">Check</button>
+    <button class="btn" data-act="cal-jpg">Download JPG</button>
+  </div>
+  ${S.calChk?calCheckPanel(calCheckRun()):""}
   <div class="legend"><span><i style="background:var(--info-soft);border-color:var(--info)"></i>Confirmed</span><span><i style="background:var(--ok-soft);border-color:var(--ok)"></i>In house</span><span><i style="background:var(--line-2);border-color:var(--muted)"></i>Checked out</span><span><i style="background:var(--bad);border-color:var(--bad);border-radius:50%;width:8px;height:8px"></i>Balance due</span><span>Each column is one night. Tap an empty cell to book it.</span></div>
   <div class="tape-wrap"><div class="tape" style="--days:${D};--dw:${dw}px">${head}${body}</div></div>
   ${calStats(start,D)}`;
+}
+/* Calendar search: guest name, booking ref, OTA number, phone or email. Live stays nearest today come first. */
+function calHits(q){
+  q=String(q||"").trim().toLowerCase(); if(q.length<2) return [];
+  const T=d2n(S.today), near=b=>validDate(b.checkIn)?Math.abs(d2n(b.checkIn)-T):1e9;
+  return propBookings().filter(b=>[b.guestName,b.ref,b.otaRef,b.phone,b.email].some(v=>String(v||"").toLowerCase().includes(q)))
+    .sort((a,b)=>(LIVE(b.status)-LIVE(a.status))||near(a)-near(b)).slice(0,20);
+}
+function calResults(){
+  if(!S.calResOpen) return "";
+  const q=S.calQ.trim(); if(q.length<2) return "";
+  const hits=calHits(q);
+  return `<div class="cal-res" role="listbox" aria-label="Matching bookings">${hits.length?hits.map(b=>`<button role="option" data-act="cal-go" data-id="${b.id}"><b>${esc(b.guestName||"Guest")}</b> <span class="pill st-${b.status}">${STATUS[b.status]||b.status}</span><small>${esc(fdw(b.checkIn))} → ${esc(fdw(b.checkOut))} · ${esc(unitLabel(unitById(b.unitId)))} · <span class="mono">${esc(b.ref||b.id.slice(-6).toUpperCase())}</span></small></button>`).join(""):`<div class="muted" style="padding:10px 12px">No booking matches “${esc(q)}”.</div>`}</div>`;
+}
+// Scroll the calendar to a booking and outline its bar.
+function calGo(id){
+  const b=S.bookings.find(x=>x.id===id); if(!b) return;
+  S.calResOpen=false;
+  if(!LIVE(b.status)||!validDate(b.checkIn)){ toast(`${b.guestName||"This booking"} is ${STATUS[b.status]||b.status}, so it isn't on the calendar.`); render(); openBooking(id); return; }
+  S.calStart=addDays(b.checkIn,-1); S.calHi=id; render();
+  setTimeout(()=>{ const el=document.querySelector(`.tb[data-bid="${id}"]`); if(el) el.scrollIntoView({block:"center",inline:"center",behavior:"smooth"}); else toast("This booking has no room/bed on the calendar. Use Check to see why."); },40);
+}
+/* Check: compare what the calendar draws for the shown dates with the Bookings list for the same dates. */
+function calCheckRun(){
+  const from=S.calStart, end=addDays(from,S.calDays), shown=new Set(sortedUnits().map(u=>u.id));
+  const okDates=b=>validDate(b.checkIn)&&validDate(b.checkOut)&&b.checkOut>b.checkIn;
+  const inRange=b=>okDates(b)&&b.checkIn<end&&b.checkOut>from;
+  const PB=propBookings(), issues=[], add=(b,msg)=>issues.push({id:b.id,name:b.guestName||"Guest",ref:b.ref||b.id.slice(-6).toUpperCase(),msg});
+  const listed=PB.filter(b=>LIVE(b.status)&&inRange(b));
+  const drawn=listed.filter(b=>shown.has(b.unitId));
+  for(const b of PB){
+    if(!LIVE(b.status)) continue;
+    if(!okDates(b)){ add(b,"Check-in / check-out dates are missing or wrong, so it can't be drawn on the calendar."); continue; }
+    if(!inRange(b)) continue;
+    const u=unitById(b.unitId);
+    if(!u) add(b,"No room/bed assigned (or its room was deleted), so it's in Bookings but not on the calendar.");
+    else if(!shown.has(u.id)) add(b,`Its room/bed “${unitLabel(u)}” is switched off in Setup, so it's in Bookings but not on the calendar.`);
+    if(b.status==="checked_in"&&b.checkOut<S.today) add(b,`Still “In house” but check-out was ${fdw(b.checkOut)}.`);
+    if(b.status==="confirmed"&&b.checkOut<=S.today) add(b,`Still “Confirmed” but the stay ended ${fdw(b.checkOut)}. Check in/out, or mark no-show.`);
+  }
+  for(let i=0;i<drawn.length;i++) for(let j=i+1;j<drawn.length;j++){ const a=drawn[i], c=drawn[j];
+    if(a.unitId===c.unitId&&a.checkIn<c.checkOut&&c.checkIn<a.checkOut) add(a,`Double-booked with ${c.guestName||"another guest"} (${c.ref||c.id.slice(-6).toUpperCase()}) on ${unitLabel(unitById(a.unitId))}. One bar hides the other.`); }
+  return {from,to:addDays(end,-1),listed:listed.length,drawn:drawn.length,issues};
+}
+function calCheckPanel(R){
+  return `<section class="notice cal-chk" style="border-left-color:${R.issues.length?"var(--bad)":"var(--ok)"}" data-noimg>
+    <div class="bar-row" style="margin:0"><h3 class="grow" style="margin:0">${R.issues.length?`${R.issues.length} thing${R.issues.length===1?"":"s"} to fix`:"All match ✓"}</h3><button class="btn small ghost" data-act="cal-check-close">Close</button></div>
+    <p class="muted" style="margin:6px 0">${esc(fd(R.from,{day:"numeric",month:"short"}))} – ${esc(fd(R.to,{day:"numeric",month:"short"}))}: ${R.listed} booking${R.listed===1?"":"s"} in the Bookings list, ${R.drawn} shown on the calendar.</p>
+    ${R.issues.length?`<ul style="margin:0;padding-left:18px">${R.issues.map(i=>`<li><button class="btn small ghost" data-act="open" data-id="${i.id}"><b>${esc(i.name)}</b> <span class="mono">${esc(i.ref)}</span></button> ${esc(i.msg)}</li>`).join("")}</ul>`:""}</section>`;
+}
+/* Save the current screen (Calendar, or Today / This week / This month) as a JPG. html2canvas loads only when needed. */
+function loadH2C(){
+  if(window.html2canvas) return Promise.resolve(window.html2canvas);
+  return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="/vendor/html2canvas-1.4.1.min.js"; s.onload=()=>res(window.html2canvas); s.onerror=()=>rej(new Error("the image tool didn't load")); document.head.appendChild(s); });
+}
+// html2canvas 1.4 can't read modern colour syntax (color-mix() computes to color(srgb …)), so the copy it
+// draws gets every such colour rewritten as plain rgba(), via a 1px canvas.
+function jpgSafeColors(root){
+  const cx=document.createElement("canvas").getContext("2d",{willReadFrequently:true}), cache=new Map();
+  const rgba=v=>{ if(cache.has(v)) return cache.get(v); cx.clearRect(0,0,1,1); cx.fillStyle="#000"; cx.fillStyle=v; cx.fillRect(0,0,1,1); const [r,g,b,a]=cx.getImageData(0,0,1,1).data; const out=`rgba(${r},${g},${b},${+(a/255).toFixed(3)})`; cache.set(v,out); return out; };
+  const modern=/\b(color|oklch|oklab|lab|lch|color-mix)\(/;
+  const props=["color","background-color","border-top-color","border-right-color","border-bottom-color","border-left-color","outline-color","text-decoration-color","fill","stroke","caret-color","column-rule-color"];
+  const win=root.ownerDocument.defaultView;
+  for(const el of [root,...root.querySelectorAll("*")]){
+    const cs=win.getComputedStyle(el);
+    for(const p of props){ const v=cs.getPropertyValue(p); if(v&&modern.test(v)) el.style.setProperty(p,rgba(v),"important"); }
+    for(const p of ["box-shadow","text-shadow","background-image"]){ const v=cs.getPropertyValue(p); if(v&&modern.test(v)) el.style.setProperty(p,"none","important"); }
+  }
+}
+async function downloadJpg(filename){
+  const m=$("#main"); if(!m) return;
+  toast("Making the image…");
+  try{
+    const h2c=await loadH2C(), tape=m.querySelector(".tape"), w=Math.max(m.scrollWidth,tape?tape.scrollWidth+48:0);
+    const canvas=await h2c(m,{backgroundColor:getComputedStyle(document.body).backgroundColor,scale:Math.min(2,window.devicePixelRatio||1),logging:false,width:w,windowWidth:Math.max(w,document.documentElement.clientWidth),
+      onclone:doc=>{ doc.querySelectorAll("#main [data-noimg],#main .cal-res").forEach(x=>x.remove()); doc.querySelectorAll("#main .tape-wrap").forEach(x=>{ x.style.overflow="visible"; });
+        // html2canvas draws the hidden insides of closed <details>, so keep only their summary line
+        doc.querySelectorAll("#main details:not([open])").forEach(d=>[...d.children].forEach(c=>{ if(c.tagName!=="SUMMARY") c.remove(); }));
+        const mm=doc.getElementById("main"); if(mm){ mm.style.width=w+"px"; mm.style.maxWidth="none"; jpgSafeColors(mm); } }});
+    const blob=await new Promise(r=>canvas.toBlob(r,"image/jpeg",0.92));
+    if(!blob) throw new Error("the image came out empty");
+    await save(filename,blob);
+  }catch(e){ console.error(e); toast("Couldn't make the image: "+(e&&e.message||e)); }
 }
 function calStats(from,D){
   const to=addDays(from,D-1), end=addDays(to,1), PB=propBookings(), L=PB.filter(b=>LIVE(b.status));
@@ -2777,6 +2875,12 @@ document.addEventListener("click",async e=>{
     case "t-move": { const m=S.tMode||"day", a=S.tAnchor||S.today, k=+el.dataset.k; S.tAnchor=m==="month"?ymAdd(a.slice(0,7),k)+"-01":addDays(a,m==="week"?7*k:k); render(); window.scrollTo(0,0); break; }
     case "t-now": S.tAnchor=S.today; S.tPick=false; render(); break;
     case "goto-cal": S.view="calendar"; render(); window.scrollTo(0,0); break;
+    case "cal-find": { const h=calHits(S.calQ); if(h.length) calGo(h[0].id); else { S.calResOpen=true; render(); } break; }
+    case "cal-go": calGo(id); break;
+    case "cal-check": S.calChk=calCheckRun(); render(); break;
+    case "cal-check-close": S.calChk=null; render(); break;
+    case "cal-jpg": downloadJpg(`calendar-${S.calStart}-${S.calDays}days.jpg`); break;
+    case "t-jpg": { const m=S.tMode||"day", r=periodRange(m,S.tAnchor||S.today); downloadJpg(m==="day"?`today-${r.from}.jpg`:m==="week"?`week-${r.from}.jpg`:`month-${r.from.slice(0,7)}.jpg`); break; }
     case "cal-day": { const d=el.dataset.d; S.calOpen=S.calOpen||new Set(); S.calOpen.has(d)?S.calOpen.delete(d):S.calOpen.add(d); render(); break; }
     case "day-toggle": { const d=el.dataset.d; S.dayOpen.has(d)?S.dayOpen.delete(d):S.dayOpen.add(d); render(); break; }
     case "day-all": { const ds=(el.dataset.days||"").split(",").filter(Boolean); const any=ds.some(d=>S.dayOpen.has(d)); ds.forEach(d=>any?S.dayOpen.delete(d):S.dayOpen.add(d)); render(); break; }
@@ -2835,6 +2939,7 @@ document.addEventListener("input",e=>{
     return;
   }
   if(t.id==="q"){ S.q=t.value; clearTimeout(S._qt); S._qt=setTimeout(render,150); }
+  if(t.id==="cal-q"){ S.calQ=t.value; S.calResOpen=true; if(!t.value.trim()) S.calHi=null; clearTimeout(S._cq); S._cq=setTimeout(render,150); }
   if(t.id==="f-payAmt") t.dataset.touched="1";
   if(t.id==="d-val"||t.name==="d-type") discPreview();
   if(t.closest&&t.closest("#bform")) formHints();
@@ -2867,6 +2972,9 @@ document.addEventListener("change",e=>{ if(e.target.id==="img-input"){ addImages
 ["dragenter","dragover"].forEach(ev=>document.addEventListener(ev,e=>{ const z=e.target.closest&&e.target.closest("#dropzone"); if(z){ e.preventDefault(); z.classList.add("over"); } }));
 ["dragleave","drop"].forEach(ev=>document.addEventListener(ev,e=>{ const z=e.target.closest&&e.target.closest("#dropzone"); if(z){ e.preventDefault(); z.classList.remove("over"); if(ev==="drop"&&e.dataTransfer) addImages(e.dataTransfer.files); } }));
 document.addEventListener("paste",e=>{ if(!S.open||!$("#dlg").open) return; const fs=[...(e.clipboardData?.files||[])].filter(f=>/^image\//.test(f.type)); if(fs.length){ e.preventDefault(); addImages(fs); } });
+document.addEventListener("keydown",e=>{ if(e.target.id!=="cal-q") return;
+  if(e.key==="Enter"){ e.preventDefault(); const h=calHits(S.calQ); if(h.length) calGo(h[0].id); }
+  else if(e.key==="Escape"&&S.calResOpen){ S.calResOpen=false; render(); } });
 document.addEventListener("keydown",e=>{ if((e.key==="Enter"||e.key===" ")&&e.target.id==="dropzone"){ e.preventDefault(); $("#img-input").click(); } });
 setInterval(()=>{ const t=todayBkk(); if(t!==S.today){ S.today=t; render(); } },60000);
 
