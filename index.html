@@ -501,7 +501,7 @@ const TYPE_ORDER = ["rooftop","private","dorm"];
 const STATUS = { confirmed:"Confirmed", checked_in:"In house", checked_out:"Checked out", cancelled:"Cancelled", no_show:"No-show", void:"Cancelled" };
 const isCancel = s => s==="cancelled"||s==="void";
 const LIVE = s => s !== "cancelled" && s !== "no_show" && s !== "void";
-const PAY = [{k:"cash",label:"Cash"},{k:"card",label:"Credit card"},{k:"promptpay",label:"PromptPay"},{k:"ota",label:"Prepaid via OTA"}];
+const PAY = [{k:"cash",label:"Cash"},{k:"card",label:"Credit card"},{k:"promptpay",label:"PromptPay"},{k:"ota",label:"OTA Collected"}];
 const DESK = ["cash","card","promptpay"];
 const payLabel = k => (PAY.find(p=>p.k===k)||{label:"Other"}).label;
 function payKey(p){ if(p&&p.mk) return p.mk; const m=String(p&&p.method||"").toLowerCase(); if(m.startsWith("cash")) return "cash"; if(m.includes("card")) return "card"; if(m.includes("prompt")||m.includes("transfer")) return "promptpay"; if(m.includes("ota")) return "ota"; return "other"; }
@@ -740,7 +740,7 @@ function vPeriod(m,r){
   <section class="kpis" aria-label="Income collected">
     <div class="kpi"><span class="label">Income collected</span><span class="v">${money(total)}</span><span class="s">${ent.length} payment${ent.length===1?"":"s"} · counted on the day collected</span></div>
     <div class="kpi"><span class="label">At the desk</span><span class="v">${money(pb.desk)}</span><span class="s">cash + card + PromptPay</span></div>
-    <div class="kpi"><span class="label">Prepaid via OTA</span><span class="v">${money(pb.ota)}</span><span class="s">${pb.n.ota} payout${pb.n.ota===1?"":"s"} confirmed</span></div>
+    <div class="kpi"><span class="label">OTA Collected</span><span class="v">${money(pb.ota)}</span><span class="s">${pb.n.ota} payout${pb.n.ota===1?"":"s"} confirmed</span></div>
     <div class="kpi"><span class="label">Awaiting collection</span><span class="v ${pendT>0?"due":""}">${money(pendT)}</span><span class="s">${pend.length} not yet collected · stays ${word}</span></div>
   </section>
   <section class="panel"><div class="panel-h"><h3>Collected ${word}</h3><span class="muted">Total <b class="num">${money(total)}</b></span></div>
@@ -1082,7 +1082,7 @@ async function payoutImport(P){
     if(k<0) k=pays.findIndex(p=>p.id==="hg_pay");
     if(k<0) k=pays.findIndex(p=>payKey(p)==="ota"&&(isPending(p)||!p.payoutId));
     const base=k>=0?pays[k]:{id:"hg_pay",createdAt:nowIso(),by:S.uid||null};
-    const pay=Object.assign({},base,{mk:"ota",method:"Prepaid via OTA",amount:r.net,status:"collected",voided:false,date:r.payDate,expDate:base.expDate||base.date||b.checkIn,expAmount:base.expAmount!=null?base.expAmount:base.amount,collectedAt:nowIso(),collectedBy:S.uid||null,payoutId:r.payoutId,note:`Booking.com payout ${r.payoutId} · ${dmy(r.payDate)}`});
+    const pay=Object.assign({},base,{mk:"ota",method:"OTA Collected",amount:r.net,status:"collected",voided:false,date:r.payDate,expDate:base.expDate||base.date||b.checkIn,expAmount:base.expAmount!=null?base.expAmount:base.amount,collectedAt:nowIso(),collectedBy:S.uid||null,payoutId:r.payoutId,note:`Booking.com payout ${r.payoutId} · ${dmy(r.payDate)}`});
     if(k>=0) pays[k]=pay; else pays.push(pay);
     const patch={payments:pays,charges:(b.charges||[]).filter(c=>c.id!=="ota_fee").concat([fee])};
     if(n&&Math.abs(folio(b).room-r.amount)>=1) patch.rate=r.amount/n;
@@ -1139,7 +1139,7 @@ async function hgOpen(){
 function hgRender(){
   const P=HG.plan, cnt=k=>P?P.items.filter(i=>i.action===k).length:0;
   const body=P&&P.kind==="payout"?payoutRender(P):!P?`<label class="dropzone" for="hg-file" style="padding:28px 16px"><span class="dz-plus">+</span><b>Choose a Hoteliers Guru, Airbnb or Booking.com payout file</b><small>Hoteliers Guru → Reports → Reservation report → Export (.xlsx)<br>Airbnb → Reservations or Earnings → Export (.csv)<br>Booking.com extranet → Finance → Payouts → download month (.csv)</small></label><input type="file" id="hg-file" accept=".xlsx,.xls,.csv" hidden>
-      <div class="muted" style="font-size:.85rem">Bookings are matched by reservation number, so importing the same or an overlapping file again only updates what changed. Imported bookings come in as <b>awaiting collection</b> and only count as income after someone clicks <b>Collect</b> (choose Cash, Card, PromptPay or Prepaid via OTA). Dorm guests get any free bed, 401 first.</div>`
+      <div class="muted" style="font-size:.85rem">Bookings are matched by reservation number, so importing the same or an overlapping file again only updates what changed. Imported bookings come in as <b>awaiting collection</b> and only count as income after someone clicks <b>Collect</b> (choose Cash, Card, PromptPay or OTA Collected). Dorm guests get any free bed, 401 first.</div>`
     :`<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
         ${[["New",cnt("new")],["Updated",cnt("update")],["Unchanged",cnt("same")],["Cancelled",cnt("cancel")],["Already in PMS",cnt("dup")],["Problems",cnt("error")],["No free room/bed",P.items.filter(i=>i.over&&(i.action==="new"||i.action==="update")).length]].map(([l,v])=>`<div class="kpi"><span class="label">${l}</span><span class="v">${v}</span></div>`).join("")}</div>
       <div class="muted" style="font-size:.85rem">${esc(HG.file)} · ${esc(withProp(P.prop,()=>propInfo().name))} · booked ${esc(dmy(P.bFrom))} – ${esc(dmy(P.bTo))} · ${P.items.length} reservations</div>
@@ -1175,7 +1175,7 @@ async function hgImport(){
     const r=i.r, n=nightsBetween(r.ci,r.co);
     // not every OTA booking is paid yet: it waits as "awaiting collection" and only counts as income once someone clicks Collect
     const fee=+r.fee||0, payout=r.payout!=null?r.payout:r.total;
-    const pay={id:"hg_pay",mk:"ota",method:"Prepaid via OTA",amount:payout,note:`Expected from ${r.chName}`,status:"pending",date:r.ci,expDate:r.ci,createdAt:nowIso(),by:S.uid||null};
+    const pay={id:"hg_pay",mk:"ota",method:"OTA Collected",amount:payout,note:`Expected from ${r.chName}`,status:"pending",date:r.ci,expDate:r.ci,createdAt:nowIso(),by:S.uid||null};
     const feeCharge=fee>0?{id:"ota_fee",kind:"discount",desc:`Discount · ${r.chName} service fee`,amount:-fee,reason:"OTA commission",date:r.ci,by:S.uid||null}:null;
     const data={guestName:r.guest,checkIn:r.ci,checkOut:r.co,rate:n?r.total/n:0,channel:r.channel,otaRef:r.no,unitId:i.unit.id,prop:P.prop,overbooked:!!i.over,source:"hg",hgBookDate:r.book||"",hgStatus:r.status};
     try{
@@ -1275,7 +1275,7 @@ function renderDialog(){
       ${!o.id&&!ro?`<fieldset class="payblock" style="grid-column:1/-1">
         <legend>Payment</legend>
         <div class="seg" role="radiogroup" aria-label="Payment">
-          ${PAY.filter(m=>DESK.includes(m.k)).map(m=>`<label class="pm-${m.k}"><input type="radio" name="f-pay" id="f-pay-${m.k}" value="${m.k}" ${m.k==="cash"?"checked":""}><span>${m.label}</span></label>`).join("")}
+          ${PAY.filter(m=>DESK.includes(m.k)||m.k==="ota").map(m=>`<label class="pm-${m.k}"><input type="radio" name="f-pay" id="f-pay-${m.k}" value="${m.k}" ${m.k==="cash"?"checked":""}><span>${m.label}</span></label>`).join("")}
         </div>
         <div class="grid-form" id="f-pay-detail" style="margin-top:10px">
           <label class="field"><span>Amount to collect (฿) · counts as income only after Collect</span><input type="number" id="f-payAmt" min="0" step="0.01"></label>
@@ -1986,7 +1986,7 @@ async function reportPdf(){
       ["Total",T.stays,T.nights,thb(T.rev),"",thb(T.comm),thb(T.net)],right(7)); }
   const pb=R.pay;
   tbl("Payments collected by type",["Type","Payments","Amount","Share of desk"],
-    [...DESK.map(c=>[payLabel(c),pb.n[c],thb(pb[c]),pct(pb[c],pb.desk)+"%"]),["Prepaid via OTA",pb.n.ota,thb(pb.ota),"-"]].concat(pb.other?[["Other",pb.n.other,thb(pb.other),"-"]]:[]),
+    [...DESK.map(c=>[payLabel(c),pb.n[c],thb(pb[c]),pct(pb[c],pb.desk)+"%"]),["OTA Collected",pb.n.ota,thb(pb.ota),"-"]].concat(pb.other?[["Other",pb.n.other,thb(pb.other),"-"]]:[]),
     ["Desk total",DESK.reduce((s,c)=>s+pb.n[c],0),thb(pb.desk),"100%"],right(4));
   if(isFullMonth(from,to)){ const ym=from.slice(0,7), rows=[];
     for(const P of M.per) for(const [c,x] of Object.entries(P.chans)) if(x.actual){ const p=x.inv, cost=payoutCost(p); rows.push([asc((M.per.length>1?withProp(P.prop,()=>propInfo().name).replace(/^Holy Hostel\s*/,"")+" - ":"")+chanLabel(c)),thb(x.rev),thb(p.sales),thb(r2((+p.sales||0)-x.rev)),thb(cost),pct(cost,+p.sales||0)+"%",thb((+p.sales||0)-cost)]); }
@@ -2004,7 +2004,7 @@ function payReport(R){
   const days={}; for(const p of R.plist){ const d=days[p.date]||(days[p.date]={cash:0,card:0,promptpay:0,ota:0,other:0}); d[payKey(p)]+=+p.amount||0; }
   const dk=Object.keys(days).sort().reverse();
   const cols=["cash","card","promptpay","ota"].concat(pb.other?["other"]:[]);
-  return `<section class="panel"><div class="panel-h"><h3>Payments by type</h3><span class="muted">Taken at the desk: <b class="num">${money(desk)}</b>${pb.ota?` · Prepaid via OTA: ${money(pb.ota)}`:""}</span>
+  return `<section class="panel"><div class="panel-h"><h3>Payments by type</h3><span class="muted">Taken at the desk: <b class="num">${money(desk)}</b>${pb.ota?` · OTA Collected: ${money(pb.ota)}`:""}</span>
       <button class="btn small" data-act="rep-pay-csv" ${S.dl&&R.plist.length?"":"hidden"}>Export payments CSV</button></div>
     <div class="paygrid">${DESK.map(k=>`<div class="paycell pm-${k}"><span class="label">${payLabel(k)}</span><span class="v">${money(pb[k])}</span><span class="s">${pct(pb[k],desk)}% of desk · ${pb.n[k]} payment${pb.n[k]===1?"":"s"}</span></div>`).join("")}</div>
     ${desk?`<div style="padding-top:14px"><div class="stack" role="img" aria-label="Share of desk payments">${DESK.map(k=>pb[k]?`<i class="pm-${k}" style="width:${pb[k]/desk*100}%" title="${payLabel(k)} ${pct(pb[k],desk)}%"></i>`:"").join("")}</div></div>`:""}
@@ -2021,7 +2021,7 @@ function paymentsCsv(R){
 }
 function reportCsv(){
   const {from,to}=S.rep, end=addDays(to,1);
-  const rows=[["Ref","Guest","Nationality","Unit","Type","Check-in","Check-out","Nights","Guests","Channel","OTA ref","Status","Rate","Room total","Extras","Discount","Paid","Paid cash","Paid credit card","Paid PromptPay","Prepaid via OTA","Balance"]];
+  const rows=[["Ref","Guest","Nationality","Unit","Type","Check-in","Check-out","Nights","Guests","Channel","OTA ref","Status","Rate","Room total","Extras","Discount","Paid","Paid cash","Paid credit card","Paid PromptPay","OTA Collected","Balance"]];
   for(const b of (S.repData||[]).filter(b=>b.checkIn<end&&b.checkOut>from&&inProp(b)).sort((a,b)=>a.checkIn.localeCompare(b.checkIn))){
     const f=folio(b), u=unitById(b.unitId);
     rows.push([b.ref||b.id.slice(-6).toUpperCase(),b.guestName,b.nationality,unitLabel(u),u?TYPES[u.type]:"",b.checkIn,b.checkOut,f.n,b.guests,chanLabel(b.channel),b.otaRef,STATUS[b.status]||b.status,b.rate,f.room,f.extras,f.disc,f.paid,...(pb=>[pb.cash,pb.card,pb.promptpay,pb.ota])(payBreak(b.payments||[])),f.balance]);
@@ -2515,7 +2515,7 @@ async function cmApply(r){
     const total=rm.amount!=null?r2(+rm.amount):r2(g.rate*n), rate=r2(total/n);
     const pick=cmPickUnit(g,ci,co,ex&&ex.unitId,id);
     const guests=Math.max(1,(+rm.adults||0)+(+rm.children||0)||1);
-    const otaPay=r.payment_collect==="ota"?[{id:"ota_"+i,mk:"ota",method:"Prepaid via OTA",amount:total,note:`Collected by ${chanLabel(ch)}`,date:S.today,at:nowIso(),by:null}]:[];
+    const otaPay=r.payment_collect==="ota"?[{id:"ota_"+i,mk:"ota",method:"OTA Collected",amount:total,note:`Collected by ${chanLabel(ch)}`,date:S.today,at:nowIso(),by:null}]:[];
     const data={guestName:r.guest||"OTA guest",phone:r.phone||"",email:r.email||"",nationality:r.country||"",checkIn:ci,checkOut:co,guests,rate,channel:ch,otaRef:r.ota_code||"",
       notes:r.notes||"",unitId:pick.unit.id,prop,cmBookingId:r.booking_id,cmRevisionId:r.revision_id,cmRoomIndex:i,overbooked:pick.over};
     if(!ex){

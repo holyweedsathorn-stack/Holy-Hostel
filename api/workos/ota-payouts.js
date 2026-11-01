@@ -1,6 +1,6 @@
 /* GET /api/workos/ota-payouts?date=YYYY-MM-DD&prop=sathorn
  * Weekly Airbnb / Booking.com payout summary for the Thursday email. Read only.
- * Reads the "Prepaid via OTA" payments on each booking, the same ones the PMS shows as
+ * Reads the "OTA Collected" payments on each booking, the same ones the PMS shows as
  * "awaiting collection" until the payout is recorded (Collect, or the Booking.com payout import).
  *   received: OTA payments collected in the 7 days before `date`
  *   expected: OTA payments still awaiting collection that were due by `date` + 7 days (overdue included)
