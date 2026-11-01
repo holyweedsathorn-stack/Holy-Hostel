@@ -10,7 +10,7 @@ const { authorize, send, sb, doc, docs, todayBkk, validDate, monthsOf, bookingPr
 const PAY = {
   cash: { mk: "cash", method: "Cash", note: "Extension, taken in Work OS" },
   bank_transfer: { mk: "promptpay", method: "PromptPay", note: "Extension, bank transfer recorded in Work OS" },
-  ota_collect: { mk: "ota", method: "Prepaid via OTA", note: "Extension, expected from the booking site (Work OS)" },
+  ota_collect: { mk: "ota", method: "OTA Collected", note: "Extension, expected from the booking site (Work OS)" },
 };
 const fd = s => new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short" });
 

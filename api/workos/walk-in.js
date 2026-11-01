@@ -8,7 +8,7 @@
  *   name arriving now), that booking is checked in instead of making a second one.
  * - Otherwise a new booking is created in the same shape the PMS saves its own bookings
  *   (saveBooking in index.html), already checked in, so it shows on the calendar and in reports.
- *   The payment goes on as "to collect" (cash, PromptPay for a bank transfer, or Prepaid via OTA):
+ *   The payment goes on as "to collect" (cash, PromptPay for a bank transfer, or OTA Collected):
  *   the amount staff typed, or the stay's total. It counts as income once staff press Collect.
  * - The Work OS stay id is stored on the booking, so sending the same walk-in again never creates two. */
 "use strict";
@@ -102,13 +102,13 @@ module.exports = async (req, res) => {
     // Every Work OS check-in gets one "to collect" payment, so the booking always has a Collect button.
     // Same shapes the PMS saves itself: cash / bank transfer like the payment field on New booking
     // (saveBooking; the PMS has no bank-transfer method and its payKey() files "transfer" under PromptPay),
-    // and OTA-collected like the Hoteliers Guru import's "Prepaid via OTA" payment, which a later payout
+    // and OTA-collected like the Hoteliers Guru import's "OTA Collected" payment, which a later payout
     // import fills in rather than adding a second one. Nothing counts as income until staff press Collect.
     // No amount typed: the stay's total.
     const PAY = {
       cash: { mk: "cash", method: "Cash", note: "Taken at check-in (Work OS)" },
       bank_transfer: { mk: "promptpay", method: "PromptPay", note: "Bank transfer, recorded at check-in (Work OS)" },
-      ota_collect: { mk: "ota", method: "Prepaid via OTA", note: "Expected from the booking site (Work OS)" },
+      ota_collect: { mk: "ota", method: "OTA Collected", note: "Expected from the booking site (Work OS)" },
     }[body.paymentMethod] || { mk: "cash", method: "Cash", note: "Recorded at check-in (Work OS)" };
     const due = amount > 0 ? amount : Math.round(rate * nights * 100) / 100;
     const payments = due > 0 ? [{
