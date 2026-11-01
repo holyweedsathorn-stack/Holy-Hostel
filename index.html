@@ -955,6 +955,60 @@ function jpgSafeColors(root){
     for(const p of ["box-shadow","text-shadow","background-image"]){ const v=cs.getPropertyValue(p); if(v&&modern.test(v)) el.style.setProperty(p,"none","important"); }
   }
 }
+/* Today / This week / This month as a printable report image (not a screenshot): occupancy, revenue,
+   income by payment type, channels, room types and a day-by-day table, built from the same figures as Reports. */
+function periodReportHtml(m,r){
+  const {from,to}=r, end=addDays(to,1), PB=propBookings(), R=computeReport(PB,from,to), L=PB.filter(b=>LIVE(b.status));
+  const pend=L.filter(b=>b.checkIn<end&&b.checkOut>from).flatMap(pendingOf), pendT=pend.reduce((t,p)=>t+(+p.amount||0),0);
+  const pb=R.pay, collected=pb.desk+pb.ota+pb.other, net=R.roomRev+R.extras-R.discounts-R.comm;
+  const kind=m==="month"?"Monthly report":m==="week"?"Weekly report":"Daily report";
+  const title=m==="month"?monthName(from.slice(0,7)):m==="week"?`${fd(from,{day:"numeric",month:"short"})} – ${fd(to,{day:"numeric",month:"short",year:"numeric"})}`:fd(from,{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  const C={ink:"#14201C",muted:"#5C6A65",line:"#DAE1DE",soft:"#F2F5F4",brand:"#1F5E4B",bad:"#B42318"};
+  const th=`style="text-align:left;padding:7px 10px;border-bottom:2px solid ${C.line};font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:${C.muted};font-weight:600"`;
+  const thr=th.replace("text-align:left","text-align:right"), td=`style="padding:7px 10px;border-bottom:1px solid ${C.line}"`, tdr=`style="padding:7px 10px;border-bottom:1px solid ${C.line};text-align:right;font-variant-numeric:tabular-nums"`;
+  const tfr=`style="padding:8px 10px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;border-top:2px solid ${C.line}"`, tf=`style="padding:8px 10px;font-weight:700;border-top:2px solid ${C.line}"`;
+  const kpi=(l,v,s,c)=>`<div style="flex:1;min-width:0;background:#fff;border:1px solid ${C.line};border-radius:10px;padding:14px 16px"><div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:${C.muted};font-weight:600">${l}</div><div style="font-size:24px;font-weight:700;margin-top:4px;color:${c||C.ink}">${v}</div>${s?`<div style="font-size:12px;color:${C.muted};margin-top:2px">${s}</div>`:""}</div>`;
+  const sec=(h,body)=>`<div style="margin-top:22px"><div style="font-size:16px;font-weight:700;margin-bottom:8px">${h}</div>${body}</div>`;
+  const tbl=(head,rows,foot)=>`<table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid ${C.line};border-radius:10px;font-size:13px">${head}<tbody>${rows}</tbody>${foot||""}</table>`;
+  const chRows=Object.entries(R.chans).sort((a,b)=>b[1].rev-a[1].rev);
+  const payKeys=DESK.concat(["ota","other"]).filter(k=>k!=="other"||pb.other);
+  const days=[]; for(let d=from; d<=to; d=addDays(d,1)) days.push(d);
+  const colByDay=d=>R.plist.filter(p=>p.date===d).reduce((t,p)=>t+(+p.amount||0),0);
+  const daily=m==="day"?"":sec("Day by day",tbl(`<thead><tr><th ${th}>Date</th><th ${thr}>Arrivals</th><th ${thr}>Departures</th><th ${thr}>Occupied</th><th ${thr}>Room revenue</th><th ${thr}>Collected</th></tr></thead>`,
+    days.map((d,i)=>`<tr${dow(d)===0||dow(d)===6?` style="background:${C.soft}"`:""}><td ${td}>${esc(fdw(d))}</td><td ${tdr}>${L.filter(b=>b.checkIn===d).length||"–"}</td><td ${tdr}>${L.filter(b=>b.checkOut===d).length||"–"}</td><td ${tdr}>${R.daily[i]} / ${R.units} <span style="color:${C.muted}">(${pct(R.daily[i],R.units)}%)</span></td><td ${tdr}>${money(R.dailyRev[i])}</td><td ${tdr}>${money(colByDay(d))}</td></tr>`).join(""),
+    `<tfoot><tr><td ${tf}>Total</td><td ${tfr}>${R.arrivals}</td><td ${tfr}>${L.filter(b=>b.checkOut>=from&&b.checkOut<end).length}</td><td ${tfr}>${R.sold} / ${R.avail} (${pct(R.sold,R.avail)}%)</td><td ${tfr}>${money(R.dailyRev.reduce((a,b)=>a+b,0))}</td><td ${tfr}>${money(collected)}</td></tr></tfoot>`));
+  return `<div style="width:1200px;box-sizing:border-box;padding:36px 40px;background:${C.soft};color:${C.ink};font-family:${getComputedStyle(document.body).fontFamily};font-size:14px;line-height:1.45">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:3px solid ${C.brand};padding-bottom:14px">
+      <div><div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:${C.brand};font-weight:700">${esc(propName(S.prop))} · ${kind}</div><div style="font-size:30px;font-weight:700;margin-top:2px">${esc(title)}</div><div style="color:${C.muted};font-size:13px">${esc(dmy(from))} – ${esc(dmy(to))} · ${R.units} rooms/beds · ${R.days} night${R.days===1?"":"s"}</div></div>
+      <div style="text-align:right;color:${C.muted};font-size:12px">Generated ${esc(dmy(S.today))}<br>Holy Hostel PMS</div></div>
+    ${sec("Occupancy & rooms",`<div style="display:flex;gap:12px">${kpi("Occupancy",pct(R.sold,R.avail)+"%",`${R.sold} of ${R.avail} unit-nights`)}${kpi("Nights sold",R.sold,`${R.arrivals} arrival${R.arrivals===1?"":"s"}`)}${kpi("ADR",money(R.sold?R.roomRev/R.sold:0),"average rate per night sold")}${kpi("RevPAR",money(R.avail?R.roomRev/R.avail:0),"room revenue per available night")}${kpi("Cancelled / no-show",`${R.cancels} / ${R.noshows}`,"arrivals in this period")}</div>`)}
+    ${sec("Revenue",`<div style="display:flex;gap:12px">${kpi("Room revenue",money(R.roomRev),"nights in this period")}${kpi("Extras",money(R.extras),"charges posted")}${kpi("Discounts",money(-R.discounts),"")}${kpi("OTA commission (est.)",money(-R.comm),"")}${kpi("Net revenue",money(net),"after discounts & commission",C.brand)}</div>`)}
+    ${sec("Income collected",tbl(`<thead><tr><th ${th}>Payment type</th><th ${thr}>Payments</th><th ${thr}>Amount</th><th ${thr}>Share</th></tr></thead>`,
+      payKeys.map(k=>`<tr><td ${td}>${esc(payLabel(k))}</td><td ${tdr}>${pb.n[k]}</td><td ${tdr}>${money(pb[k])}</td><td ${tdr}>${pct(pb[k],collected)}%</td></tr>`).join("")+`<tr><td ${td}><span style="color:${C.bad}">Awaiting collection</span></td><td ${tdr}>${pend.length}</td><td ${tdr}><span style="color:${C.bad}">${money(pendT)}</span></td><td ${tdr}>–</td></tr>`,
+      `<tfoot><tr><td ${tf}>Total collected</td><td ${tfr}>${payKeys.reduce((t,k)=>t+pb.n[k],0)}</td><td ${tfr}>${money(collected)}</td><td ${tfr}>100%</td></tr></tfoot>`))}
+    <div style="display:flex;gap:16px">
+      <div style="flex:1.4;min-width:0">${sec("By channel",tbl(`<thead><tr><th ${th}>Channel</th><th ${thr}>Stays</th><th ${thr}>Nights</th><th ${thr}>Room revenue</th><th ${thr}>Commission</th><th ${thr}>Share</th></tr></thead>`,
+        chRows.length?chRows.map(([c,x])=>`<tr><td ${td}>${esc(chanLabel(c))}</td><td ${tdr}>${x.stays}</td><td ${tdr}>${x.nights}</td><td ${tdr}>${money(x.rev)}</td><td ${tdr}>${money(x.comm)}</td><td ${tdr}>${pct(x.rev,R.roomRev)}%</td></tr>`).join(""):`<tr><td ${td} colspan="6">No stays</td></tr>`))}</div>
+      <div style="flex:1;min-width:0">${sec("By room type",tbl(`<thead><tr><th ${th}>Type</th><th ${thr}>Occupancy</th><th ${thr}>Nights</th><th ${thr}>Revenue</th></tr></thead>`,
+        TYPE_ORDER.filter(t=>R.byType[t].avail).map(t=>{ const x=R.byType[t]; return `<tr><td ${td}>${esc(TYPES[t])}</td><td ${tdr}>${pct(x.sold,x.avail)}%</td><td ${tdr}>${x.sold}</td><td ${tdr}>${money(x.rev)}</td></tr>`; }).join("")))}</div>
+    </div>
+    ${daily}
+    <div style="margin-top:20px;color:${C.muted};font-size:11.5px">Occupancy and room revenue count each night in the period it falls in. Income is counted on the day it was collected. Commission is estimated from channel rates unless the OTA fee was recorded.</div>
+  </div>`;
+}
+async function downloadPeriodReport(m,r,filename){
+  toast("Making the report…");
+  const box=document.createElement("div"); box.style.cssText="position:fixed;left:-20000px;top:0;z-index:-1";
+  try{
+    box.innerHTML=periodReportHtml(m,r); document.body.appendChild(box);
+    const h2c=await loadH2C(), node=box.firstElementChild;
+    const canvas=await h2c(node,{backgroundColor:"#F2F5F4",scale:2,logging:false,width:node.offsetWidth,height:node.offsetHeight,windowWidth:node.offsetWidth});
+    const blob=await new Promise(res=>canvas.toBlob(res,"image/jpeg",0.92));
+    if(!blob) throw new Error("the image came out empty");
+    await save(filename,blob);
+  }catch(e){ console.error(e); toast("Couldn't make the report: "+(e&&e.message||e)); }
+  finally{ box.remove(); }
+}
 async function downloadJpg(filename){
   const m=$("#main"); if(!m) return;
   toast("Making the image…");
@@ -2880,7 +2934,7 @@ document.addEventListener("click",async e=>{
     case "cal-check": S.calChk=calCheckRun(); render(); break;
     case "cal-check-close": S.calChk=null; render(); break;
     case "cal-jpg": downloadJpg(`calendar-${S.calStart}-${S.calDays}days.jpg`); break;
-    case "t-jpg": { const m=S.tMode||"day", r=periodRange(m,S.tAnchor||S.today); downloadJpg(m==="day"?`today-${r.from}.jpg`:m==="week"?`week-${r.from}.jpg`:`month-${r.from.slice(0,7)}.jpg`); break; }
+    case "t-jpg": { const m=S.tMode||"day", r=periodRange(m,S.tAnchor||S.today); downloadPeriodReport(m,r,m==="day"?`report-day-${r.from}.jpg`:m==="week"?`report-week-${r.from}.jpg`:`report-month-${r.from.slice(0,7)}.jpg`); break; }
     case "cal-day": { const d=el.dataset.d; S.calOpen=S.calOpen||new Set(); S.calOpen.has(d)?S.calOpen.delete(d):S.calOpen.add(d); render(); break; }
     case "day-toggle": { const d=el.dataset.d; S.dayOpen.has(d)?S.dayOpen.delete(d):S.dayOpen.add(d); render(); break; }
     case "day-all": { const ds=(el.dataset.days||"").split(",").filter(Boolean); const any=ds.some(d=>S.dayOpen.has(d)); ds.forEach(d=>any?S.dayOpen.delete(d):S.dayOpen.add(d)); render(); break; }
