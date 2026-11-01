@@ -113,6 +113,7 @@ function shape(b, unitsById, settings, date) {
             : { id: b.unitId || "", label: "Unassigned", type: "", group: "", name: "" },
     balance: balanceOf(b),
     notes: b.notes || "",
+    checkedInAt: b.checkedInAt || null, checkedOutAt: b.checkedOutAt || null,
   };
 }
 
@@ -142,5 +143,5 @@ function matchUnit(units, prop, roomNumber, bedNumber) {
 
 module.exports = {
   authorize, send, sb, docs, doc, todayBkk, validDate, addDays, nightsBetween, LIVE, balanceOf, bookingProp,
-  closedMonthsHit, shape, unitRate, unitLabel, unitProp, matchUnit,
+  closedMonthsHit, monthsOf, shape, unitRate, unitLabel, unitProp, matchUnit,
 };
