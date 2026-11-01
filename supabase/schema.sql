@@ -229,3 +229,67 @@ end $$;
 
 revoke all on function public.workos_create_walk_in(text, jsonb) from public, anon, authenticated;
 grant execute on function public.workos_create_walk_in(text, jsonb) to service_role;
+
+-- "Extend" (or shorten) pressed on Work OS: move the booking's check-out date unless the room or bed is
+-- booked by someone else in the new nights, and add the extension payment (if any) as "to collect".
+-- api/workos/extend.js builds p_payment and does the closed-month check.
+create or replace function public.workos_extend_booking(p_id text, p_check_out text, p_payment jsonb, p_staff text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  d       jsonb;
+  clash   record;
+  now_iso text := to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+  staff   text := nullif(left(trim(coalesce(p_staff, '')), 80), '');
+  label   text;
+  hist    jsonb;
+begin
+  select data into d from public.docs where collection = 'bookings' and id = p_id;
+  if not found then return jsonb_build_object('result', 'not_found'); end if;
+  perform pg_advisory_xact_lock(hashtext('workos-unit:' || coalesce(d->>'unitId', '')));
+  select data into d from public.docs where collection = 'bookings' and id = p_id for update;
+
+  if coalesce(d->>'status', '') not in ('confirmed', 'checked_in') then
+    return jsonb_build_object('result', 'wrong_status', 'booking', d);
+  end if;
+  if p_check_out is null or p_check_out !~ '^\d{4}-\d{2}-\d{2}$' or p_check_out <= d->>'checkIn' then
+    return jsonb_build_object('result', 'bad_date', 'booking', d);
+  end if;
+  if p_check_out = d->>'checkOut' and p_payment is null then
+    return jsonb_build_object('result', 'already', 'booking', d);
+  end if;
+
+  -- same rule as conflictsFor() in index.html, ignoring this booking itself
+  select id, data into clash from public.docs
+  where collection = 'bookings' and id <> p_id
+    and data->>'unitId' = d->>'unitId'
+    and coalesce(data->>'status', '') not in ('cancelled', 'no_show', 'void')
+    and data->>'checkIn' < p_check_out
+    and data->>'checkOut' > d->>'checkIn'
+  order by data->>'checkIn'
+  limit 1;
+  if found then
+    return jsonb_build_object('result', 'room_taken', 'clash', clash.data, 'booking', d);
+  end if;
+
+  label := case when p_check_out > d->>'checkOut' then 'Extended' when p_check_out < d->>'checkOut' then 'Stay shortened' else 'Extension payment' end
+           || case when p_check_out <> d->>'checkOut'
+                   then ' to ' || substr(p_check_out, 9, 2) || '/' || substr(p_check_out, 6, 2) || '/' || substr(p_check_out, 1, 4) else '' end
+           || ' via Work OS' || coalesce(' (' || staff || ')', '');
+  hist := (case when jsonb_typeof(d->'history') = 'array' then d->'history' else '[]'::jsonb end)
+          || jsonb_build_array(jsonb_build_object('at', now_iso, 'by', null, 'action', label));
+  if jsonb_array_length(hist) > 60 then
+    hist := (select jsonb_agg(e order by i) from jsonb_array_elements(hist) with ordinality t(e, i)
+             where i > jsonb_array_length(hist) - 60);
+  end if;
+
+  d := d || jsonb_build_object('checkOut', p_check_out, 'history', hist, 'updatedAt', now_iso, 'updatedBy', null);
+  if p_payment is not null then
+    d := d || jsonb_build_object('payments',
+           (case when jsonb_typeof(d->'payments') = 'array' then d->'payments' else '[]'::jsonb end) || jsonb_build_array(p_payment));
+  end if;
+  update public.docs set data = d, updated_at = now() where collection = 'bookings' and id = p_id;
+  return jsonb_build_object('result', 'ok', 'booking', d);
+end $$;
+
+revoke all on function public.workos_extend_booking(text, text, jsonb, text) from public, anon, authenticated;
+grant execute on function public.workos_extend_booking(text, text, jsonb, text) to service_role;

@@ -73,10 +73,12 @@ Two private endpoints do this. Only a server that knows the shared secret can us
 | `GET /api/workos/front-desk?date=YYYY-MM-DD` | Today's arrivals (incl. late ones), in-house guests and who's due out. Guest name, room, dates, channel, balance. No phone, email, ID or photos. |
 | `POST /api/workos/walk-in` | A guest checked in on Work OS by hand. If the PMS already has exactly one booking for them (same OTA booking number, or same name arriving now), that booking is checked in. Otherwise a new booking is created in Work OS's room/bed, already checked in: today → expected check-out (1 night if none), price = amount paid ÷ nights (or the room's normal price), a payment **to collect** is always added (Cash, PromptPay for a bank transfer, or Prepaid via OTA; the amount typed in Work OS, or the stay's total), so the booking has a *Collect* button; it counts as income once staff press it. Refused if that room or bed is already booked. Sending it twice never makes two bookings. |
 | `POST /api/workos/booking-statuses` | `{ ids: [...] }` → the status of each booking. Work OS uses it to take guests off its hostel log once their booking is cancelled here. |
+| `POST /api/workos/sync` | `{ ids: [...] }` → every guest checked in now, guests checked out in the last 3 days, and the current state of each booking in `ids`. Work OS uses it to keep its hostel log the same as the PMS (PMS check-ins / -outs, date and room changes, cancellations). |
+| `POST /api/workos/extend` | `{ bookingId, checkOut, amountThb, paymentMethod, staffName }`: "Extend" pressed in Work OS moves the check-out date (refused if the room is booked in the new nights, or a closed month would change) and adds the extension payment as **to collect**. |
 | `POST /api/workos/booking-status` | `{ bookingId, action: "check_in" \| "check_out", staffName, allowBalance }`. Early arrivals, early departures and closed months are refused (do those here in the PMS). Check-out with money owing needs `allowBalance: true`. |
 
 Setup (once):
-1. Supabase → SQL Editor: paste all of `supabase/schema.sql` again → **Run** (section 6 adds `workos_set_booking_status` and `workos_create_walk_in`). Run it again whenever this file changes.
+1. Supabase → SQL Editor: paste all of `supabase/schema.sql` again → **Run** (section 6 adds `workos_set_booking_status`, `workos_create_walk_in` and `workos_extend_booking`). Run it again whenever this file changes.
 2. Make a long random secret, e.g. run `openssl rand -hex 32`, or use a password manager's generator (64 characters).
 3. Vercel → this project → **Settings → Environment Variables** (Production and Preview):
    - `WORKOS_API_SECRET` = the secret from step 2
