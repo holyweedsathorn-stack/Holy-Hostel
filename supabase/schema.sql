@@ -293,3 +293,56 @@ end $$;
 
 revoke all on function public.workos_extend_booking(text, text, jsonb, text) from public, anon, authenticated;
 grant execute on function public.workos_extend_booking(text, text, jsonb, text) to service_role;
+
+-- "Cancel booking" pressed on Work OS: the same change as the PMS's own Cancel booking (doStatus "void"
+-- in index.html) -- status cancelled, every payment voided (so nothing counts as income), reason and
+-- history recorded, and the room freed for those dates. Collected money is only removed when
+-- p_allow_income is true (Work OS asks staff first, like the PMS does). Closed months are checked in
+-- api/workos/cancel.js.
+create or replace function public.workos_cancel_booking(p_id text, p_reason text, p_staff text, p_allow_income boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  d       jsonb;
+  pays    jsonb;
+  income  numeric;
+  now_iso text := to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+  staff   text := nullif(left(trim(coalesce(p_staff, '')), 80), '');
+  reason  text := nullif(left(trim(coalesce(p_reason, '')), 200), '');
+  label   text;
+  hist    jsonb;
+begin
+  if reason is null then raise exception 'A reason is required' using errcode = '22023'; end if;
+  select data into d from public.docs where collection = 'bookings' and id = p_id for update;
+  if not found then return jsonb_build_object('result', 'not_found'); end if;
+  if coalesce(d->>'status', '') in ('cancelled', 'void') then return jsonb_build_object('result', 'already', 'booking', d); end if;
+
+  pays := case when jsonb_typeof(d->'payments') = 'array' then d->'payments' else '[]'::jsonb end;
+  -- income = collected, not voided (isIncome in index.html)
+  select coalesce(sum(coalesce((p->>'amount')::numeric, 0)), 0) into income
+  from jsonb_array_elements(pays) p
+  where coalesce(p->>'status', '') <> 'pending' and coalesce((p->>'voided')::boolean, false) = false;
+  if income > 0 and not coalesce(p_allow_income, false) then
+    return jsonb_build_object('result', 'income_collected', 'income', income, 'booking', d);
+  end if;
+
+  label := 'Cancelled via Work OS' || coalesce(' (' || staff || ')', '') || ': ' || reason
+           || case when income > 0 then ' · ฿' || to_char(income, 'FM999,999,990.00') || ' removed from income' else '' end;
+  hist := (case when jsonb_typeof(d->'history') = 'array' then d->'history' else '[]'::jsonb end)
+          || jsonb_build_array(jsonb_build_object('at', now_iso, 'by', null, 'action', label));
+  if jsonb_array_length(hist) > 60 then
+    hist := (select jsonb_agg(e order by i) from jsonb_array_elements(hist) with ordinality t(e, i)
+             where i > jsonb_array_length(hist) - 60);
+  end if;
+
+  d := d || jsonb_build_object(
+    'status', 'cancelled',
+    'payments', (select coalesce(jsonb_agg(p || '{"voided": true}'::jsonb order by i), '[]'::jsonb)
+                 from jsonb_array_elements(pays) with ordinality t(p, i)),
+    'cancelledAt', now_iso, 'voidedAt', now_iso, 'voidedBy', null, 'voidReason', reason,
+    'statusBeforeVoid', d->'status', 'history', hist, 'updatedAt', now_iso, 'updatedBy', null);
+  update public.docs set data = d, updated_at = now() where collection = 'bookings' and id = p_id;
+  return jsonb_build_object('result', 'ok', 'income', income, 'booking', d);
+end $$;
+
+revoke all on function public.workos_cancel_booking(text, text, text, boolean) from public, anon, authenticated;
+grant execute on function public.workos_cancel_booking(text, text, text, boolean) to service_role;
