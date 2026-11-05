@@ -1052,7 +1052,7 @@ function calStats(from,D){
 /* ---------- BOOKINGS ---------- */
 function bkCollect(b){ return [...pendingOf(b).map(p=>`<span class="nowrap"><span class="pm-dot pm-${payKey(p)}"></span><span class="num">${money(p.amount)}</span> ${S.canWrite?`<button class="btn small primary" data-act="collect" data-id="${b.id}" data-pid="${p.id}">Collect</button>`:""}</span>`),
       ...(b.payments||[]).filter(p=>isIncome(p)&&!isCancel(b.status)).map(p=>`<span class="nowrap col-done" title="${esc(payLabel(payKey(p)))} · received ${esc(dmy(p.date))}"><span class="col-tick">✓</span><span class="num">${money(p.amount)}</span> <small class="muted">${esc(dmy(p.date).slice(0,5))}</small> ${S.canWrite?`<button class="btn small" data-act="uncollect" data-id="${b.id}" data-pid="${p.id}">Uncollect</button>`:""}</span>`)].join(" ")||'<span class="muted">—</span>'; }
-function bkDup(b){ return S.canWrite?`<button class="btn small" data-act="dup" data-id="${b.id}" title="New booking for the same guest">Duplicate</button>`:""; }
+function bkDup(b){ return S.canWrite?`<button class="btn small" data-act="dup" data-id="${b.id}" title="New booking for the same guest">Duplicate</button>${isCancel(b.status)?` <button class="btn small danger" data-act="delete" data-id="${b.id}" title="Permanently delete this cancelled booking">Delete</button>`:""}`:""; }
 function bkPP(b){ return b.thumb?`<button class="pp-btn" data-act="pp-view" data-id="${esc(b.id)}" title="View passport / ID"><img src="${b.thumb}" alt="Passport of ${esc(b.guestName)}">${+b.imgCount>1?`<span>+${+b.imgCount-1}</span>`:""}</button>`:`<span class="pp-none" aria-hidden="true">ID</span>`; }
 function bkCard(b){ const f=folio(b);
   return `<article class="bk-card${isCancel(b.status)?" is-void":""}" data-act="open" data-id="${b.id}" tabindex="0" role="button" aria-label="Open booking ${esc(b.guestName)}">
@@ -1455,7 +1455,7 @@ function renderDialogParts(){
     st==="checked_in"?`<button class="btn small primary" data-act="checkout" data-id="${b.id}">Check out</button>`:"",
     st==="confirmed"?`<button class="btn small" data-act="noshow" data-id="${b.id}">No-show</button>`:"",
     (st==="no_show"||st==="checked_out")?`<button class="btn small" data-act="reopen" data-id="${b.id}">Reopen</button>`:"",
-    !isCancel(st)?`<button class="btn small danger" data-act="void" data-id="${b.id}">Cancel booking</button>`:"",
+    !isCancel(st)?`<button class="btn small danger" data-act="void" data-id="${b.id}">Cancel booking</button>`:`<button class="btn small danger" data-act="delete" data-id="${b.id}">Delete</button>`,
 ""
   ].join("");
   head.innerHTML=`<h2 class="${isCancel(st)?"void-title":""}">${esc(b.guestName||"Guest")} <span class="mono muted" style="font-size:.85rem;font-weight:400">#${esc(b.ref||b.id.slice(-6).toUpperCase())}</span></h2>
@@ -1728,8 +1728,23 @@ async function doStatus(id,kind){
     const res=await patchBooking(b,{status:"cancelled",payments,cancelledAt:nowIso(),voidedAt:nowIso(),voidedBy:S.uid||null,voidReason:reason,statusBeforeVoid:b.status},`Cancelled (${reason})${incTot?` · ${money(incTot)} removed from income`:""}`,"Booking cancelled");
     return res;
   }
-  if(kind==="delete"){ if(!await ask(`<p>Delete this booking permanently? It disappears from reports too. Cancelled bookings are normally kept for records.</p>`,"Delete",true)) return;
-    const ok=await guard(()=>bRef(b.id).delete(),"Deleted"); if(ok) closeDlg(); }
+  if(kind==="delete"){
+    // Only cancelled (red, crossed-out) bookings can be deleted; anything else has to be cancelled first.
+    if(!isCancel(b.status)){ toast("Cancel the booking first. Only cancelled bookings can be deleted."); return; }
+    let imgs=[]; try{ imgs=(await S.db.collection("images").where("bookingId","==",b.id).get()).docs.map(d=>d.id); }catch(e){ console.error(e); }
+    const pays=(b.payments||[]).length, paid=(b.payments||[]).reduce((s,p)=>s+(+p.amount||0),0);
+    const ok=await ask(`<h3 style="margin-bottom:8px">Permanently delete this booking?</h3>
+      <div class="totals" style="grid-template-columns:auto 1fr;justify-content:start;padding:0;gap:6px 16px">
+        <span class="muted">Guest</span><span><b>${esc(b.guestName||"Guest")}</b> · #${esc(b.ref||b.id.slice(-6).toUpperCase())}</span>
+        <span class="muted">Stay</span><span>${esc(fdw(b.checkIn))} → ${esc(fdw(b.checkOut))} · ${esc(unitLabel(unitById(b.unitId)))}</span>
+        ${b.voidReason?`<span class="muted">Cancelled</span><span>${esc(b.voidReason)}</span>`:""}
+      </div>
+      <div class="errbox" style="margin-top:12px"><b>This can't be undone.</b> The booking is removed from Bookings, the Calendar, Reports and the Activity log${pays?`, with its ${pays} payment record${pays===1?"":"s"} (${money(paid)}, already removed from income when it was cancelled)`:""}${imgs.length?`, and its ${imgs.length} passport / ID photo${imgs.length===1?"":"s"}`:""}.</div>
+      <p class="muted" style="margin:8px 0 0">To keep a record instead, leave it as Cancelled.</p>`,"Delete permanently",true);
+    if(!ok) return;
+    const done=await guard(async()=>{ for(const id of imgs) await S.db.collection("images").doc(id).delete(); await bRef(b.id).delete(); },"Booking deleted");
+    if(done&&S.open&&S.open.id===b.id) closeDlg();
+  }
 }
 async function addCharge(desc,amount){
   const b=S.bookings.find(x=>x.id===S.open?.id); if(!b) return;
