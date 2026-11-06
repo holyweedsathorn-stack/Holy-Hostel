@@ -565,7 +565,14 @@ function n2d(n){ const t=new Date(n*864e5); return t.getUTCFullYear()+"-"+pad(t.
 function addDays(s,k){ return n2d(d2n(s)+k); }
 const nightsBetween = (a,b) => d2n(b)-d2n(a);
 const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s||"");
-function fd(s,o){ if(!validDate(s)) return "—"; const [y,m,d]=s.split("-").map(Number); return new Date(Date.UTC(y,m-1,d)).toLocaleDateString("en-GB",Object.assign({timeZone:"UTC",day:"numeric",month:"short"},o||{})); }
+// Every date on screen is dd/mm/yyyy, with the weekday in front when asked for ("Sun 01/11/2026").
+// Only a weekday on its own (calendar column heads) stays a word.
+function fd(s,o){ if(!validDate(s)) return "—"; o=o||{};
+  const [y,m,d]=s.split("-").map(Number), wd=o.weekday?new Date(Date.UTC(y,m-1,d)).toLocaleDateString("en-GB",{timeZone:"UTC",weekday:o.weekday}):"";
+  if("day" in o&&o.day===undefined&&"month" in o&&o.month===undefined) return wd;
+  return (wd?wd+" ":"")+dmy(s); }
+// Date and time of a stored timestamp, Bangkok time: "01/11/2026 14:05".
+function dts(t){ if(!t) return ""; const x=new Date(t); if(isNaN(x)) return ""; const p=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Bangkok",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(x).map(q=>[q.type,q.value])); return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`; }
 const fdw = s => fd(s,{weekday:"short"});
 const dow = s => new Date(d2n(s)*864e5).getUTCDay();
 function money(n){ n=Math.round((+n||0)*100)/100; const neg=n<0; n=Math.abs(n); return (neg?"−":"")+"฿"+n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -669,7 +676,7 @@ function onErr(e){ console.error(e); if(e&&e.code==="revoked"){ S.noDb=true; ren
 /* ---------- render shell ---------- */
 function render(){
   const t=todayBkk(); if(t!==S.today){ S.today=t; }
-  $("#clock").textContent=fdw(S.today)+" "+S.today.slice(0,4);
+  $("#clock").textContent=fdw(S.today);
   const ps=$("#prop-sel"), pl=propList();
   if(!pl.some(([k])=>k===S.prop)) S.prop=pl[0][0];
   const opts=pl.map(([k,p])=>`<option value="${esc(k)}" ${k===S.prop?"selected":""}>${esc((p.name||k).replace(/^Holy Hostel\s*/,"")||p.name||k)}</option>`).join("");
@@ -702,8 +709,8 @@ function periodRange(mode,a){
 }
 function periodTitle(mode,r){
   if(mode==="month") return monthName(r.from.slice(0,7));
-  if(mode==="week") return `Week ${fd(r.from,{day:"numeric",month:"short"})} – ${fd(r.to,{day:"numeric",month:"short"})} ${r.to.slice(0,4)}`;
-  return fd(r.from,{weekday:"long",day:"numeric",month:"long"})+(r.from.slice(0,4)!==S.today.slice(0,4)?" "+r.from.slice(0,4):"");
+  if(mode==="week") return `Week ${fd(r.from)} – ${fd(r.to)}`;
+  return fd(r.from,{weekday:"long"});
 }
 function periodSwitch(){
   const m=S.tMode||"day", a=S.tAnchor||S.today, cur=periodRange(m,S.today).from===periodRange(m,a).from;
@@ -1465,7 +1472,7 @@ function renderDialogParts(){
     .concat((b.charges||[]).map(c=>`<tr${isDisc(c)?' class="disc-row"':""}><td>${c.id==="ota_fee"?'<span class="pill st-checked_out">OTA fee</span> ':isDisc(c)?'<span class="pill st-disc">Discount</span> ':""}${esc(c.id==="ota_fee"?String(c.desc||"").replace(/^Discount · /,""):c.desc)}</td><td class="muted">${esc(fd(c.date))}</td><td class="r num">${money(c.amount)}</td><td class="r">${ro?"":`<button class="btn small ghost" data-act="del-charge" data-cid="${c.id}" aria-label="Remove charge">✕</button>`}</td></tr>`));
   const pays=(b.payments||[]).map(p=>`<tr${p.voided?' class="voided"':isPending(p)?' class="pend"':""}><td><span class="pm-dot pm-${payKey(p)}"></span>${esc(payLabel(payKey(p))==="Other"?p.method:payLabel(payKey(p)))}${p.voided?` <span class="pill st-void" style="text-decoration:none">Cancelled</span>`:isPending(p)?` <span class="pill st-pending">Not collected</span>`:""}${p.note?` <small class="muted">· ${esc(p.note)}</small>`:""}</td><td class="muted">${isPending(p)?"—":esc(fd(p.date))}</td><td class="r num">${money(p.amount)}</td><td class="r">${ro?"":`${isPending(p)?`<button class="btn small primary" data-act="collect" data-id="${b.id}" data-pid="${p.id}">Collect</button> `:isIncome(p)?`<button class="btn small" data-act="uncollect" data-id="${b.id}" data-pid="${p.id}" title="Move back to awaiting collection">Uncollect</button> `:""}<button class="btn small ghost" data-act="del-pay" data-pid="${p.id}" aria-label="Remove payment">✕</button>`}</td></tr>`).join("");
   const presets=(S.settings.extras||[]).map((x,i)=>/^discount$/i.test(x.label)?"":`<button type="button" class="chip" data-act="preset" data-i="${i}">${esc(x.label)}${x.amount?" "+money(x.amount):""}</button>`).join("");
-  $("#dlg-folio").innerHTML=(isCancel(st)?`<div class="void-banner"><b>Cancelled</b> ${b.voidedAt?esc(new Date(b.voidedAt).toLocaleString("en-GB",{timeZone:"Asia/Bangkok",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})):""}${b.voidedBy?` by ${esc(S.names[b.voidedBy]||"staff")}`:""}${b.voidReason?` · Reason: ${esc(b.voidReason)}`:""}. Nothing on this booking counts as income.</div>`:"")+`
+  $("#dlg-folio").innerHTML=(isCancel(st)?`<div class="void-banner"><b>Cancelled</b> ${b.voidedAt?esc(dts(b.voidedAt)):""}${b.voidedBy?` by ${esc(S.names[b.voidedBy]||"staff")}`:""}${b.voidReason?` · Reason: ${esc(b.voidReason)}`:""}. Nothing on this booking counts as income.</div>`:"")+`
    <section>
     <div class="section-t"><h3>Folio</h3><button class="btn small" data-act="invoice" ${S.dl?"":"hidden"}>Download invoice</button></div>
     <div class="panel"><div class="tbl-wrap"><table class="folio"><thead><tr><th>Charges</th><th>Date</th><th class="r">Amount</th><th></th></tr></thead><tbody>${lines.join("")}</tbody></table></div>
@@ -1501,7 +1508,7 @@ function renderDialogParts(){
       ${comm?`<span class="muted">Est. ${esc(chanLabel(b.channel))} commission (${comm}%)</span><span class="num muted">${money(f.room*comm/100)}</span>`:""}</div>
     </div>
    </section>
-   <section><h3 style="margin-bottom:6px">History</h3><div class="hist">${(b.history||[]).slice().reverse().map(h=>`<div><span class="mono">${esc(new Date(h.at).toLocaleString("en-GB",{timeZone:"Asia/Bangkok",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}))}</span> · ${esc(h.action)}${h.by?` · ${esc(S.names[h.by]||"staff")}`:""}</div>`).join("")||"No history."}</div></section>`;
+   <section><h3 style="margin-bottom:6px">History</h3><div class="hist">${(b.history||[]).slice().reverse().map(h=>`<div><span class="mono">${esc(dts(h.at))}</span> · ${esc(h.action)}${h.by?` · ${esc(S.names[h.by]||"staff")}`:""}</div>`).join("")||"No history."}</div></section>`;
   resolveNames((b.history||[]).map(h=>h.by).concat([b.voidedBy]));
 }
 function readForm(){
@@ -1551,7 +1558,7 @@ async function saveBooking(){
   for(const k of Object.keys(base)) if(base[k]===undefined) delete base[k];
   if(o.id){
     const b=S.bookings.find(x=>x.id===o.id);
-    const changes=[]; if(b.unitId!==d.unitId) changes.push("moved to "+unitLabel(unitById(d.unitId))); if(b.checkIn!==d.checkIn||b.checkOut!==d.checkOut) changes.push(`dates ${d.checkIn} → ${d.checkOut}`); if(+b.rate!==d.rate) changes.push("rate "+money(d.rate));
+    const changes=[]; if(b.unitId!==d.unitId) changes.push("moved to "+unitLabel(unitById(d.unitId))); if(b.checkIn!==d.checkIn||b.checkOut!==d.checkOut) changes.push(`dates ${dmy(d.checkIn)} → ${dmy(d.checkOut)}`); if(+b.rate!==d.rate) changes.push("rate "+money(d.rate));
     const ok=await patchBooking(b,Object.assign(base,{unitId:d.unitId,prop:unitProp(unitById(d.unitId))}),changes.length?"Edited: "+changes.join(", "):"Details edited","Saved");
     if(btn) btn.disabled=false; if(ok) closeDlg();
   } else {
@@ -1772,7 +1779,7 @@ async function collectPayment(bid,pid){
     <p class="muted" style="margin:0 0 10px">It counts as income on the date received. Confirm how the guest paid:</p>
     <div class="seg" role="radiogroup" aria-label="Payment type">${PAY.filter(m=>DESK.includes(m.k)||m.k==="ota").map(m=>`<label class="pm-${m.k}"><input type="radio" name="c-method" id="c-m-${m.k}" value="${m.k}" ${m.k===payKey(p)?"checked":""}><span>${m.label}</span></label>`).join("")}</div>
     <div class="grid-form" style="margin-top:10px;grid-template-columns:1fr 1fr"><label class="field"><span>Amount received (฿)</span><input type="number" id="col-amt" min="0" step="0.01" value="${f2(p.amount)}"></label>
-    <label class="field"><span>Date received</span><input type="date" id="col-date" value="${S.today}" max="${S.today}"></label></div>
+    <label class="field"><span>Date received</span>${dateField("col-date",S.today,"")}</label></div>
     ${b.channel!=="walkin"&&b.channel!=="direct"&&!folio(b).fee?`<p class="muted" style="margin:8px 0 0;font-size:.85rem">If ${esc(chanLabel(b.channel))} paid out less than ${money(p.amount)}, the difference is recorded as OTA commission, so the balance stays at ฿0.</p>`:""}`,"Collect");
   if(!ok) return;
   const mk=(document.querySelector('input[name="c-method"]:checked')||{}).value||payKey(p);
@@ -2183,7 +2190,7 @@ function payReport(R){
 }
 function paymentsCsv(R){
   const rows=[["Date","Ref","Guest","Unit","Payment type","Amount","Note"]];
-  for(const p of R.plist.slice().sort((a,b)=>a.date.localeCompare(b.date))){ const b=p._b; rows.push([p.date,b.ref||b.id.slice(-6).toUpperCase(),b.guestName,unitLabel(unitById(b.unitId)),payLabel(payKey(p)),p.amount,p.note||""]); }
+  for(const p of R.plist.slice().sort((a,b)=>a.date.localeCompare(b.date))){ const b=p._b; rows.push([dmy(p.date),b.ref||b.id.slice(-6).toUpperCase(),b.guestName,unitLabel(unitById(b.unitId)),payLabel(payKey(p)),p.amount,p.note||""]); }
   return "\ufeff"+rows.map(r=>r.map(v=>{v=String(v??""); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(",")).join("\n");
 }
 function reportCsv(){
@@ -2191,7 +2198,7 @@ function reportCsv(){
   const rows=[["Ref","Guest","Nationality","Unit","Type","Check-in","Check-out","Nights","Guests","Channel","OTA ref","Status","Rate","Room total","Extras","Discount","Paid","Paid cash","Paid credit card","Paid PromptPay","OTA Collected","Balance"]];
   for(const b of (S.repData||[]).filter(b=>b.checkIn<end&&b.checkOut>from&&inProp(b)).sort((a,b)=>a.checkIn.localeCompare(b.checkIn))){
     const f=folio(b), u=unitById(b.unitId);
-    rows.push([b.ref||b.id.slice(-6).toUpperCase(),b.guestName,b.nationality,unitLabel(u),u?TYPES[u.type]:"",b.checkIn,b.checkOut,f.n,b.guests,chanLabel(b.channel),b.otaRef,STATUS[b.status]||b.status,b.rate,f.room,f.extras,f.disc,f.paid,...(pb=>[pb.cash,pb.card,pb.promptpay,pb.ota])(payBreak(b.payments||[])),f.balance]);
+    rows.push([b.ref||b.id.slice(-6).toUpperCase(),b.guestName,b.nationality,unitLabel(u),u?TYPES[u.type]:"",dmy(b.checkIn),dmy(b.checkOut),f.n,b.guests,chanLabel(b.channel),b.otaRef,STATUS[b.status]||b.status,b.rate,f.room,f.extras,f.disc,f.paid,...(pb=>[pb.cash,pb.card,pb.promptpay,pb.ota])(payBreak(b.payments||[])),f.balance]);
   }
   return "﻿"+rows.map(r=>r.map(v=>{v=String(v??""); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(",")).join("\n");
 }
@@ -2751,7 +2758,7 @@ function vChannels(){
     ${S.canWrite&&cmConn()?`<button class="btn" data-act="cm-import" ${CM.importing?"disabled":""}>${CM.importing?"Checking…":"Check OTA bookings"}</button>
     <button class="btn" data-act="cm-sync" ${CM.syncing||!linked?"disabled":""}>${CM.syncing?"Syncing…":"Sync now"}</button>`:""}</div>
   ${banner}
-  ${CM.conn==="ok"?`<div class="muted" style="font-size:.85rem">Last sent to booking sites: ${st.last_push?esc(new Date(st.last_push).toLocaleString("en-GB",{timeZone:"Asia/Bangkok",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})):"never"} · Last booking check: ${st.last_pull?esc(new Date(st.last_pull).toLocaleString("en-GB",{timeZone:"Asia/Bangkok",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})):"never"} · Waiting to import: ${st.queue_size??0}</div>`:""}
+  ${CM.conn==="ok"?`<div class="muted" style="font-size:.85rem">Last sent to booking sites: ${st.last_push?esc(dts(st.last_push)):"never"} · Last booking check: ${st.last_pull?esc(dts(st.last_pull)):"never"} · Waiting to import: ${st.queue_size??0}</div>`:""}
   <nav class="subtabs" aria-label="Channel manager sections">${subtabs.map(([k,l])=>`<button class="tab" data-act="cm-tab" data-k="${k}" aria-current="${CM.tab===k?"page":"false"}">${l}</button>`).join("")}</nav>
   ${body}`;
 }
@@ -2828,7 +2835,7 @@ function cmMappingView(prop,groups,cfg,admin){
 function cmLogView(prop){
   const entries=CM.logs.filter(l=>l.prop===prop).flatMap(l=>l.entries||[]).sort((a,b)=>String(b.at).localeCompare(String(a.at))).slice(0,150);
   return `<section class="panel"><div class="panel-h"><h3>Activity</h3><span class="muted">Last 7 days</span></div>
-    ${entries.length?`<div class="rows">${entries.map(e=>`<div class="row"><span class="cm-k cm-k-${esc(e.kind)}">${e.kind==="in"?"From OTA":e.kind==="out"?"Sent":"Problem"}</span><span class="mono muted" style="font-size:.8rem">${esc(new Date(e.at).toLocaleString("en-GB",{timeZone:"Asia/Bangkok",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}))}</span><span style="flex:1 1 300px;min-width:0">${esc(e.msg)}</span></div>`).join("")}</div>`:`<div class="empty">Nothing yet. Bookings received from the booking sites and updates sent to them will show here.</div>`}</section>`;
+    ${entries.length?`<div class="rows">${entries.map(e=>`<div class="row"><span class="cm-k cm-k-${esc(e.kind)}">${e.kind==="in"?"From OTA":e.kind==="out"?"Sent":"Problem"}</span><span class="mono muted" style="font-size:.8rem">${esc(dts(e.at))}</span><span style="flex:1 1 300px;min-width:0">${esc(e.msg)}</span></div>`).join("")}</div>`:`<div class="empty">Nothing yet. Bookings received from the booking sites and updates sent to them will show here.</div>`}</section>`;
 }
 
 /* ---------- CHANNELS actions ---------- */
@@ -2846,7 +2853,7 @@ async function cmWriteAri(prop,gids,dates,fn){
 async function cmEditCell(gid,date){
   const prop=S.prop, g=cmGroups(prop).find(x=>x.gid===gid); if(!g) return;
   const a=ariGet(prop,gid,date);
-  const ok=await ask(`<h3 style="margin-bottom:8px">${esc(g.label)} · ${esc(fdw(date))} ${date.slice(0,4)}</h3>
+  const ok=await ask(`<h3 style="margin-bottom:8px">${esc(g.label)} · ${esc(fdw(date))}</h3>
     <div class="grid-form"><label class="field"><span>Price ฿ (Setup price ${money(g.rate)})</span><input type="number" id="ce-price" min="0" step="0.01" value="${a.rate!=null?a.rate:""}" placeholder="${g.rate}"></label>
     <label class="field"><span>Min stay</span><input type="number" id="ce-min" min="1" step="1" value="${+a.minStay>1?a.minStay:""}" placeholder="1"></label></div>
     <label class="cm-chk" style="margin-top:10px"><input type="checkbox" id="ce-stop" ${a.stop?"checked":""}> Stop selling this day on all booking sites</label>
