@@ -75,10 +75,11 @@ Two private endpoints do this. Only a server that knows the shared secret can us
 | `POST /api/workos/booking-statuses` | `{ ids: [...] }` → the status of each booking. Work OS uses it to take guests off its hostel log once their booking is cancelled here. |
 | `POST /api/workos/sync` | `{ ids: [...] }` → every guest checked in now, guests checked out in the last 3 days, and the current state of each booking in `ids`. Work OS uses it to keep its hostel log the same as the PMS (PMS check-ins / -outs, date and room changes, cancellations). |
 | `POST /api/workos/extend` | `{ bookingId, checkOut, amountThb, paymentMethod, staffName }`: "Extend" pressed in Work OS moves the check-out date (refused if the room is booked in the new nights, or a closed month would change) and adds the extension payment as **to collect**. |
+| `POST /api/workos/cancel` | `{ bookingId, reason, staffName, allowIncome }`: "Cancel booking" in Work OS cancels the booking exactly like the PMS's own Cancel booking (red, crossed out, payments voided, room freed). Collected money is only removed from income with `allowIncome: true`; otherwise it answers `income_collected` with the amount. Closed months refused. |
 | `POST /api/workos/booking-status` | `{ bookingId, action: "check_in" \| "check_out", staffName, allowBalance }`. Early arrivals, early departures and closed months are refused (do those here in the PMS). Check-out with money owing needs `allowBalance: true`. |
 
 Setup (once):
-1. Supabase → SQL Editor: paste all of `supabase/schema.sql` again → **Run** (section 6 adds `workos_set_booking_status`, `workos_create_walk_in` and `workos_extend_booking`). Run it again whenever this file changes.
+1. Supabase → SQL Editor: paste all of `supabase/schema.sql` again → **Run** (section 6 adds `workos_set_booking_status`, `workos_create_walk_in`, `workos_extend_booking` and `workos_cancel_booking`). Run it again whenever this file changes.
 2. Make a long random secret, e.g. run `openssl rand -hex 32`, or use a password manager's generator (64 characters).
 3. Vercel → this project → **Settings → Environment Variables** (Production and Preview):
    - `WORKOS_API_SECRET` = the secret from step 2
