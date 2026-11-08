@@ -1998,6 +1998,7 @@ function vReports(){
       <div class="seg" role="radiogroup" aria-label="Locations"><label><input type="radio" name="rep-scope" value="prop" ${S.repScope!=="all"?"checked":""}><span>${esc(propInfo().name.replace(/^Holy Hostel\s*/,"")||propInfo().name)} only</span></label><label><input type="radio" name="rep-scope" value="all" ${S.repScope==="all"?"checked":""} ${multi?"":"disabled"}><span>All locations${multi?"":" (S22 has no rooms yet)"}</span></label></div>
       <div class="seg" role="radiogroup" aria-label="Count income by"><label><input type="radio" name="chan-basis" value="received" ${byReceived()?"checked":""}><span>Money received</span></label><label><input type="radio" name="chan-basis" value="earned" ${byReceived()?"":"checked"}><span>Nights stayed</span></label></div>
       <span class="grow"></span>
+      <button class="btn primary" data-act="rep-savepdf" ${S.dl?"":"hidden"} title="The whole report and Balances due as one document">Save PDF</button>
       <button class="btn primary" data-act="rep-pdf" ${S.dl?"":"hidden"}>Download PDF</button>
       <button class="btn" data-act="rep-xlsx" ${S.dl?"":"hidden"}>Export Excel</button></div>
     <nav class="tabs" aria-label="Report sections" style="border-bottom:1px solid var(--line);padding-bottom:6px">${[["report","Report"],["activity","Activity log"],["balances","Balances due"]].map(([k,l])=>`<button class="tab" data-act="rep-tab" data-k="${k}" aria-current="${S.repTab===k?"page":"false"}">${l}</button>`).join("")}</nav>`;
@@ -2098,6 +2099,63 @@ async function editPayout(prop,ym,ch){
 
 /* ---------- PDF ---------- */
 function loadScript(src){ return new Promise((res,rej)=>{ if(document.querySelector(`script[src="${src}"]`)) return res(); const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=()=>rej(new Error("Couldn't load "+src)); document.head.appendChild(s); }); }
+/* "Save PDF": the whole report as one A4 document, laid out like the monthly report the owner files
+   (title, the KPI boxes, then every section as a card). It reuses the Reports tab's own sections, so the
+   PDF holds exactly what the screen shows -- KPIs, profit & loss, locations, nightly occupancy, inventory,
+   payments, channels, OTA payout check -- plus the Balances due list, with the buttons and controls
+   taken out. The browser draws it (html2canvas), so Thai text and ฿ come out right, and it's always in
+   the light colours, whatever theme the device is in. Each section is kept whole on a page where it fits. */
+const PDF_LIGHT="--bg:#F2F5F4;--surface:#FFFFFF;--surface-2:#F7F9F8;--ink:#14201C;--muted:#5C6A65;--line:#DAE1DE;--line-2:#E8EDEB;--accent:#0E6A59;--accent-ink:#FFFFFF;--accent-soft:#DCEEE8;--brass:#A8731A;--brass-soft:#F5E9D3;--ok:#1D7A4C;--ok-soft:#DDF1E5;--warn:#9A5B00;--warn-soft:#FBEBD0;--bad:#B3261E;--bad-soft:#F9DEDC;--info:#2C56AE;--info-soft:#DFE7F8;--weekend:#EEF2F0;--today:#E4F2EC;color-scheme:light";
+async function reportSavePdf(){
+  if(!S.repData||!S.rep) return;
+  toast("Making the PDF…");
+  const box=document.createElement("div"); box.style.cssText="position:fixed;left:-20000px;top:0;z-index:-1";
+  try{
+    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+    const h2c=await loadH2C();
+    const M=repModel(), {from,to}=M, loc=M.props.length>1?"All locations":propInfo().name;
+    const tab=S.repTab; let report; S.repTab="report"; try{ report=vReports(); } finally{ S.repTab=tab; }
+    const kind=isFullMonth(from,to)?"monthly report":"report";
+    box.innerHTML=`<div class="pdf-doc" style="${PDF_LIGHT};width:1240px;box-sizing:border-box;padding:30px 34px;background:#fff;color:var(--ink);font-family:var(--f-body)">
+      <div class="pdf-blk" style="border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:6px">
+        <div style="font-family:var(--f-display);font-size:22px;font-weight:700">Monthly report</div>
+        <div style="color:var(--muted)">${esc(periodLabel(from,to))} · ${esc(loc)}</div></div>
+      <div class="pdf-blk" style="font-family:var(--f-display);font-size:26px;font-weight:700;margin:6px 0 4px">Holy Hostel — ${esc(periodLabel(from,to))} ${kind}</div>
+      <div class="pdf-report">${report}</div>
+      <div class="pdf-bal">${vBalances({props:M.props})}</div>
+      <div class="pdf-blk" style="margin-top:14px;padding-top:8px;border-top:1px solid var(--line-2);color:var(--muted);font-size:12px">Holy Hostel PMS · ${esc(dmy(from))} – ${esc(dmy(to))} · income counted by ${byReceived()?"money received":"nights stayed"} · generated ${esc(dmy(S.today))} ${esc(new Date().toLocaleTimeString("en-GB",{timeZone:"Asia/Bangkok",hour:"2-digit",minute:"2-digit"}))} (Bangkok)</div>
+    </div>`;
+    document.body.appendChild(box);
+    const doc=box.firstElementChild, rep=doc.querySelector(".pdf-report");
+    // the Reports controls (range, scope, export buttons, section tabs) and every button / input are screen-only
+    [...rep.children].filter(el=>el.matches(".bar-row")&&el.querySelector("h2,.seg,[data-act='rep-pdf']")||el.matches("nav.tabs")).forEach(el=>el.remove());
+    doc.querySelectorAll("button,input,select,textarea,.dfield").forEach(el=>el.remove());
+    // folded lists (payments per type, per day...) open up: the PDF shows every line
+    doc.querySelectorAll("details").forEach(d=>{ d.open=true; });
+    doc.querySelectorAll(".tbl-wrap").forEach(el=>{ el.style.overflow="visible"; });
+    jpgSafeColors(doc);
+    // one picture per section, so a page break never cuts through a table
+    const blocks=[...doc.children].flatMap(el=>el.matches(".pdf-report,.pdf-bal")?[...el.children]:[el]).filter(el=>el.offsetHeight>0);
+    const {jsPDF}=window.jspdf, pdf=new jsPDF({unit:"pt",format:"a4"}), PW=pdf.internal.pageSize.getWidth(), PH=pdf.internal.pageSize.getHeight();
+    const MX=28, MY=30, k=(PW-2*MX)/doc.offsetWidth, GAP=8;
+    let y=MY;
+    for(const el of blocks){
+      const c=await h2c(el,{backgroundColor:"#FFFFFF",scale:2,logging:false,windowWidth:doc.offsetWidth});
+      const w=el.offsetWidth*k, h=el.offsetHeight*k, x=MX+(el.offsetLeft-doc.offsetLeft)*k;
+      if(h<=PH-2*MY){ if(y+h>PH-MY){ pdf.addPage(); y=MY; } pdf.addImage(c.toDataURL("image/jpeg",0.92),"JPEG",x,y,w,h); y+=h+GAP; continue; }
+      // taller than a page (a long Balances list): slice it across pages
+      const pxPerPt=c.height/h; let done=0;
+      while(done<h){ if(y>MY+1&&PH-MY-y<80){ pdf.addPage(); y=MY; }
+        const part=Math.min(h-done,PH-MY-y), sc=document.createElement("canvas"); sc.width=c.width; sc.height=Math.ceil(part*pxPerPt);
+        sc.getContext("2d").drawImage(c,0,Math.floor(done*pxPerPt),c.width,sc.height,0,0,c.width,sc.height);
+        pdf.addImage(sc.toDataURL("image/jpeg",0.92),"JPEG",x,y,w,part); done+=part; y+=part+GAP; if(done<h){ pdf.addPage(); y=MY; } }
+    }
+    const pages=pdf.internal.getNumberOfPages();
+    for(let i=1;i<=pages;i++){ pdf.setPage(i); pdf.setFontSize(7.5); pdf.setTextColor(92,106,101); pdf.text(`Page ${i} of ${pages}`,PW-MX,PH-12,{align:"right"}); }
+    await save(`holy-hostel-monthly-report-${M.props.length>1?"all":S.prop}-${isFullMonth(from,to)?from.slice(0,7):from+"_to_"+to}.pdf`,pdf.output("arraybuffer"));
+  }catch(e){ console.error(e); toast("Couldn't make the PDF: "+(e&&e.message||e)); }
+  finally{ box.remove(); }
+}
 async function reportPdf(){
   if(!S.repData||!S.rep) return;
   toast("Preparing PDF…");
@@ -2977,6 +3035,7 @@ document.addEventListener("click",async e=>{
     case "rep-preset": { const p=el.dataset.p; S.rep=p==="this"?monthRange(0):p==="last"?monthRange(-1):p==="7"?{from:addDays(S.today,-7),to:addDays(S.today,-1)}:{from:S.today.slice(0,4)+"-01-01",to:S.today}; S.repData=null; render(); break; }
     case "rep-pay-csv": if(S.repData&&S.rep){ const R=computeReport(S.repData.filter(b=>b.checkIn<=S.rep.to&&inProp(b)),S.rep.from,S.rep.to); save(`holy-hostel-payments-${S.rep.from}_to_${S.rep.to}.csv`,paymentsCsv(R)); } break;
     case "rep-pdf": reportPdf(); break;
+    case "rep-savepdf": reportSavePdf(); break;
     case "rep-xlsx": reportXlsx(); break;
     case "rep-tab": S.repTab=el.dataset.k; render(); break;
     case "month-close": { const ym=S.rep.from.slice(0,7), close=el.dataset.v==="1", ps=repProps();
