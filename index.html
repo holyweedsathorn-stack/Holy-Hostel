@@ -715,7 +715,7 @@ function periodTitle(mode,r){
 function periodSwitch(){
   const m=S.tMode||"day", a=S.tAnchor||S.today, cur=periodRange(m,S.today).from===periodRange(m,a).from;
   return `<div class="seg" role="radiogroup" aria-label="Period">${[["day","Today"],["week","This week"],["month","This month"]].map(([k,l])=>`<label><input type="radio" name="t-mode" value="${k}" ${m===k?"checked":""}><span>${l}</span></label>`).join("")}</div>
-    <span class="nowrap" style="position:relative"><button class="btn small" data-act="t-move" data-k="-1" aria-label="Previous">←</button><button class="btn small" data-act="t-move" data-k="1" aria-label="Next">→</button><button class="btn small" data-act="t-cal" aria-label="Pick a ${m==="month"?"month":"date"}" title="Pick a ${m==="month"?"month":"date"}" aria-expanded="${S.tPick?"true":"false"}">${CAL_SVG}</button><input type="date" id="t-date" value="${esc(a)}" tabindex="-1" aria-hidden="true" style="position:absolute;right:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0">${S.tPick?monthPicker(a):""}${cur?"":`<button class="btn small ghost" data-act="t-now">Back to ${m==="day"?"today":m==="week"?"this week":"this month"}</button>`}<button class="btn small" data-act="t-jpg" data-noimg>Download JPG</button></span>`;
+    <span class="nowrap" style="position:relative"><button class="btn small" data-act="t-move" data-k="-1" aria-label="Previous">←</button><button class="btn small" data-act="t-move" data-k="1" aria-label="Next">→</button><button class="btn small" data-act="t-cal" aria-label="Pick a ${m==="month"?"month":"date"}" title="Pick a ${m==="month"?"month":"date"}" aria-expanded="${S.tPick?"true":"false"}">${CAL_SVG}</button><input type="date" id="t-date" value="${esc(a)}" tabindex="-1" aria-hidden="true" style="position:absolute;right:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0">${S.tPick?monthPicker(a):""}${cur?"":`<button class="btn small ghost" data-act="t-now">Back to ${m==="day"?"today":m==="week"?"this week":"this month"}</button>`}<button class="btn small" data-act="t-jpg" data-noimg>Download JPG</button><button class="btn small" data-act="t-savepdf" data-noimg ${S.dl?"":"hidden"} title="The whole report for this period, and Balances due, as one document">Save PDF</button></span>`;
 }
 function monthPicker(a){
   const y=S.tPickYear||+a.slice(0,4), sel=a.slice(0,7), now=S.today.slice(0,7);
@@ -1998,7 +1998,6 @@ function vReports(){
       <div class="seg" role="radiogroup" aria-label="Locations"><label><input type="radio" name="rep-scope" value="prop" ${S.repScope!=="all"?"checked":""}><span>${esc(propInfo().name.replace(/^Holy Hostel\s*/,"")||propInfo().name)} only</span></label><label><input type="radio" name="rep-scope" value="all" ${S.repScope==="all"?"checked":""} ${multi?"":"disabled"}><span>All locations${multi?"":" (S22 has no rooms yet)"}</span></label></div>
       <div class="seg" role="radiogroup" aria-label="Count income by"><label><input type="radio" name="chan-basis" value="received" ${byReceived()?"checked":""}><span>Money received</span></label><label><input type="radio" name="chan-basis" value="earned" ${byReceived()?"":"checked"}><span>Nights stayed</span></label></div>
       <span class="grow"></span>
-      <button class="btn primary" data-act="rep-savepdf" ${S.dl?"":"hidden"} title="The whole report and Balances due as one document">Save PDF</button>
       <button class="btn primary" data-act="rep-pdf" ${S.dl?"":"hidden"}>Download PDF</button>
       <button class="btn" data-act="rep-xlsx" ${S.dl?"":"hidden"}>Export Excel</button></div>
     <nav class="tabs" aria-label="Report sections" style="border-bottom:1px solid var(--line);padding-bottom:6px">${[["report","Report"],["activity","Activity log"],["balances","Balances due"]].map(([k,l])=>`<button class="tab" data-act="rep-tab" data-k="${k}" aria-current="${S.repTab===k?"page":"false"}">${l}</button>`).join("")}</nav>`;
@@ -2115,10 +2114,11 @@ async function reportSavePdf(){
     const h2c=await loadH2C();
     const M=repModel(), {from,to}=M, loc=M.props.length>1?"All locations":propInfo().name;
     const tab=S.repTab; let report; S.repTab="report"; try{ report=vReports(); } finally{ S.repTab=tab; }
-    const kind=isFullMonth(from,to)?"monthly report":"report";
+    // a whole month / a Monday-to-Sunday week / one day, as picked on the Today tab
+    const kind=isFullMonth(from,to)?"monthly report":from===to?"daily report":nightsBetween(from,to)===6&&dow(from)===1?"weekly report":"report";
     box.innerHTML=`<div class="pdf-doc" style="${PDF_LIGHT};width:1240px;box-sizing:border-box;padding:30px 34px;background:#fff;color:var(--ink);font-family:var(--f-body)">
       <div class="pdf-blk" style="border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:6px">
-        <div style="font-family:var(--f-display);font-size:22px;font-weight:700">Monthly report</div>
+        <div style="font-family:var(--f-display);font-size:22px;font-weight:700">${kind[0].toUpperCase()+kind.slice(1)}</div>
         <div style="color:var(--muted)">${esc(periodLabel(from,to))} · ${esc(loc)}</div></div>
       <div class="pdf-blk" style="font-family:var(--f-display);font-size:26px;font-weight:700;margin:6px 0 4px">Holy Hostel — ${esc(periodLabel(from,to))} ${kind}</div>
       <div class="pdf-report">${report}</div>
@@ -2152,9 +2152,23 @@ async function reportSavePdf(){
     }
     const pages=pdf.internal.getNumberOfPages();
     for(let i=1;i<=pages;i++){ pdf.setPage(i); pdf.setFontSize(7.5); pdf.setTextColor(92,106,101); pdf.text(`Page ${i} of ${pages}`,PW-MX,PH-12,{align:"right"}); }
-    await save(`holy-hostel-monthly-report-${M.props.length>1?"all":S.prop}-${isFullMonth(from,to)?from.slice(0,7):from+"_to_"+to}.pdf`,pdf.output("arraybuffer"));
+    await save(`holy-hostel-${kind.replace(" ","-")}-${M.props.length>1?"all":S.prop}-${isFullMonth(from,to)?from.slice(0,7):from===to?from:from+"_to_"+to}.pdf`,pdf.output("arraybuffer"));
   }catch(e){ console.error(e); toast("Couldn't make the PDF: "+(e&&e.message||e)); }
   finally{ box.remove(); }
+}
+/* "Save PDF" on the Today tab: the same document for the period shown there (today, this week or this
+   month, or whichever one was picked). It reads that period's bookings for itself and puts the Reports
+   tab's own range and figures back afterwards, so the Reports tab is left exactly as it was. */
+async function todaySavePdf(){
+  if(!S.db) return;
+  const m=S.tMode||"day", r=periodRange(m,S.tAnchor||S.today), keep={rep:S.rep,data:S.repData};
+  toast("Making the PDF…");
+  try{
+    const snap=await S.db.collection("bookings").where("checkOut",">",prevRange(r.from,r.to).from).get();
+    S.rep={from:r.from,to:r.to}; S.repData=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+    await reportSavePdf();
+  }catch(e){ console.error(e); toast("Couldn't make the PDF: "+(e&&e.message||e)); }
+  finally{ S.rep=keep.rep; S.repData=keep.data; }
 }
 async function reportPdf(){
   if(!S.repData||!S.rep) return;
@@ -3035,7 +3049,7 @@ document.addEventListener("click",async e=>{
     case "rep-preset": { const p=el.dataset.p; S.rep=p==="this"?monthRange(0):p==="last"?monthRange(-1):p==="7"?{from:addDays(S.today,-7),to:addDays(S.today,-1)}:{from:S.today.slice(0,4)+"-01-01",to:S.today}; S.repData=null; render(); break; }
     case "rep-pay-csv": if(S.repData&&S.rep){ const R=computeReport(S.repData.filter(b=>b.checkIn<=S.rep.to&&inProp(b)),S.rep.from,S.rep.to); save(`holy-hostel-payments-${S.rep.from}_to_${S.rep.to}.csv`,paymentsCsv(R)); } break;
     case "rep-pdf": reportPdf(); break;
-    case "rep-savepdf": reportSavePdf(); break;
+    case "t-savepdf": todaySavePdf(); break;
     case "rep-xlsx": reportXlsx(); break;
     case "rep-tab": S.repTab=el.dataset.k; render(); break;
     case "month-close": { const ym=S.rep.from.slice(0,7), close=el.dataset.v==="1", ps=repProps();
