@@ -1995,7 +1995,7 @@ function vReports(){
     <label class="field" style="flex-direction:row;align-items:center;gap:6px"><span>From</span>${dateField("rep-from",from)}</label>
     <label class="field" style="flex-direction:row;align-items:center;gap:6px"><span>To</span>${dateField("rep-to",to)}</label></div>
     <div class="bar-row">
-      <div class="seg" role="radiogroup" aria-label="Locations"><label><input type="radio" name="rep-scope" value="prop" ${S.repScope!=="all"?"checked":""}><span>${esc(propInfo().name.replace(/^Holy Hostel\s*/,"")||propInfo().name)} only</span></label><label><input type="radio" name="rep-scope" value="all" ${S.repScope==="all"?"checked":""} ${multi?"":"disabled"}><span>All locations${multi?"":" (S22 has no rooms yet)"}</span></label></div>
+      <div class="seg" role="radiogroup" aria-label="Locations"><label><input type="radio" name="rep-scope" value="prop" ${S.repScope!=="all"?"checked":""}><span>${esc(propInfo().name.replace(/^Holy Hostel\s*/,"")||propInfo().name)} only</span></label><label><input type="radio" name="rep-scope" value="all" ${S.repScope==="all"?"checked":""} ${multi?"":"disabled"}><span>All locations${multi?"":" (only one location has rooms yet)"}</span></label></div>
       <div class="seg" role="radiogroup" aria-label="Count income by"><label><input type="radio" name="chan-basis" value="received" ${byReceived()?"checked":""}><span>Money received</span></label><label><input type="radio" name="chan-basis" value="earned" ${byReceived()?"":"checked"}><span>Nights stayed</span></label></div>
       <span class="grow"></span>
       <button class="btn primary" data-act="rep-pdf" ${S.dl?"":"hidden"}>Download PDF</button>
