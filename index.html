@@ -529,7 +529,7 @@ const pendingOf = b => (b.payments||[]).filter(isPending);
 function payBreak(list){ list=list.filter(isIncome); const r={cash:0,card:0,promptpay:0,ota:0,other:0,n:{cash:0,card:0,promptpay:0,ota:0,other:0}}; for(const p of list){ const k=payKey(p); r[k]+=+p.amount||0; r.n[k]++; } r.desk=r.cash+r.card+r.promptpay; return r; }
 const DEF_PROPS = {
   sathorn:{name:"Holy Hostel Sathorn",address:"44/6 Soi Si Bamphen, Thung Maha Mek, Sathorn, Bangkok 10120",phone:"+66 82-432-8087",email:"HolyHostelSathorn@gmail.com",taxId:""},
-  s22:{name:"Holy Hostel S22",address:"288 Sukhumvit Alley 22, Khlong Toei, Bangkok 10110",phone:"+66 82-432-8087",email:"",taxId:""}
+  s22:{name:"Holy Hostel Sukhumvit 22",address:"288 Sukhumvit Alley 22, Khlong Toei, Bangkok 10110",phone:"+66 82-432-8087",email:"",taxId:""}
 };
 const DEF_SETTINGS = {
   properties:DEF_PROPS,
