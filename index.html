@@ -529,7 +529,7 @@ const pendingOf = b => (b.payments||[]).filter(isPending);
 function payBreak(list){ list=list.filter(isIncome); const r={cash:0,card:0,promptpay:0,ota:0,other:0,n:{cash:0,card:0,promptpay:0,ota:0,other:0}}; for(const p of list){ const k=payKey(p); r[k]+=+p.amount||0; r.n[k]++; } r.desk=r.cash+r.card+r.promptpay; return r; }
 const DEF_PROPS = {
   sathorn:{name:"Holy Hostel Sathorn",address:"44/6 Soi Si Bamphen, Thung Maha Mek, Sathorn, Bangkok 10120",phone:"+66 82-432-8087",email:"HolyHostelSathorn@gmail.com",taxId:""},
-  s22:{name:"Holy Hostel S22",address:"288 Sukhumvit Alley 22, Khlong Toei, Bangkok 10110",phone:"+66 82-432-8087",email:"",taxId:""}
+  s22:{name:"Holy Hostel Sukhumvit 22",address:"288 Sukhumvit Alley 22, Khlong Toei, Bangkok 10110",phone:"+66 82-432-8087",email:"",taxId:""}
 };
 const DEF_SETTINGS = {
   properties:DEF_PROPS,
@@ -1995,7 +1995,7 @@ function vReports(){
     <label class="field" style="flex-direction:row;align-items:center;gap:6px"><span>From</span>${dateField("rep-from",from)}</label>
     <label class="field" style="flex-direction:row;align-items:center;gap:6px"><span>To</span>${dateField("rep-to",to)}</label></div>
     <div class="bar-row">
-      <div class="seg" role="radiogroup" aria-label="Locations"><label><input type="radio" name="rep-scope" value="prop" ${S.repScope!=="all"?"checked":""}><span>${esc(propInfo().name.replace(/^Holy Hostel\s*/,"")||propInfo().name)} only</span></label><label><input type="radio" name="rep-scope" value="all" ${S.repScope==="all"?"checked":""} ${multi?"":"disabled"}><span>All locations${multi?"":" (S22 has no rooms yet)"}</span></label></div>
+      <div class="seg" role="radiogroup" aria-label="Locations"><label><input type="radio" name="rep-scope" value="prop" ${S.repScope!=="all"?"checked":""}><span>${esc(propInfo().name.replace(/^Holy Hostel\s*/,"")||propInfo().name)} only</span></label><label><input type="radio" name="rep-scope" value="all" ${S.repScope==="all"?"checked":""} ${multi?"":"disabled"}><span>All locations${multi?"":" (only one location has rooms yet)"}</span></label></div>
       <div class="seg" role="radiogroup" aria-label="Count income by"><label><input type="radio" name="chan-basis" value="received" ${byReceived()?"checked":""}><span>Money received</span></label><label><input type="radio" name="chan-basis" value="earned" ${byReceived()?"":"checked"}><span>Nights stayed</span></label></div>
       <span class="grow"></span>
       <button class="btn primary" data-act="rep-pdf" ${S.dl?"":"hidden"}>Download PDF</button>
